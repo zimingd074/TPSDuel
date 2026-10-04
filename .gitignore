@@ -1,0 +1,18 @@
+# Unreal generated files
+/Binaries/
+/DerivedDataCache/
+/Intermediate/
+/Saved/
+
+# IDE generated files
+/.vs/
+*.sln
+*.suo
+*.VC.db
+*.VC.opendb
+
+# Local packaged builds (do not ignore Unreal's Build configuration directory)
+/Builds/
+
+# Project-local downloaded toolchains
+/LocalToolchain/
