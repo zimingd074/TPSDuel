@@ -7,6 +7,9 @@ param(
     [string]$JavaRoot = 'D:\Program Files\Java\jdk1.8.0_481'
 )
 $ErrorActionPreference = 'Stop'
+# UE4.27's Git working-set parser cannot decode quoted non-ASCII paths.
+# Keep Chinese documentation names usable without changing repository/global Git settings.
+$env:GIT_CONFIG_PARAMETERS=($env:GIT_CONFIG_PARAMETERS+" 'core.quotepath=false'").Trim()
 $taskProjectRoot = Split-Path -Parent $PSScriptRoot
 $taskProject = Join-Path $taskProjectRoot 'TPSDuel.uproject'
 $taskBuild = Join-Path $EngineRoot 'Engine\Build\BatchFiles\Build.bat'
@@ -24,7 +27,7 @@ function Build-Editor {
 function Initialize-Assets {
     & $taskEditor $taskProject "-ExecutePythonScript=$(Join-Path $PSScriptRoot 'InitializeAssets.py')" -unattended -nosplash -NullRHI -stdout -FullStdOutLogOutput -UTF8Output
     if ($LASTEXITCODE -ne 0) { throw "Asset initialization failed ($LASTEXITCODE)." }
-    foreach ($taskAsset in @('Content\Maps\L_Menu.umap','Content\Maps\L_Arena.umap','Content\Materials\M_DuelColor.uasset','Content\Audio\S_Fire.uasset')) {
+    foreach ($taskAsset in @('Content\Maps\L_Menu.umap','Content\Maps\L_Arena.umap','Content\Materials\M_DuelColor.uasset','Content\Materials\M_Concrete.uasset','Content\Materials\M_Brick.uasset','Content\Materials\M_Wood.uasset','Content\Materials\M_Metal.uasset','Content\Materials\M_Paint.uasset','Content\Materials\M_Sky.uasset','Content\Mannequin\Character\Mesh\SK_Mannequin.uasset','Content\Audio\S_Fire.uasset')) {
         if (-not (Test-Path -LiteralPath (Join-Path $taskProjectRoot $taskAsset))) { throw "Asset initialization incomplete: $taskAsset" }
     }
 }
@@ -71,6 +74,10 @@ switch ($Action) {
                 $taskData = @($taskZip.Entries | Where-Object { $_.FullName -match '^assets/.*\.(obb(\.png)?|pak)$' -and $_.Length -gt 0 })
                 if ($taskData.Count -lt 1) { throw 'APK is missing embedded game data. Check the UAT package step and bPackageDataInsideApk.' }
             } finally { $taskZip.Dispose() }
+            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.1.0\Android\TPSDuel-arm64.apk'
+            if(Test-Path -LiteralPath $taskPreviousAPK){
+                & (Join-Path $PSScriptRoot 'CheckAndroidUpdate.ps1') -PreviousAPK $taskPreviousAPK -NewAPK $taskAPK.FullName -AndroidSDKRoot $AndroidSDKRoot -JavaRoot $JavaRoot
+            }
         }
     }
 }

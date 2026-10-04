@@ -5,6 +5,7 @@
 #include "DuelPlayerState.h"
 #include "TPSDuel.h"
 #include "Engine/World.h"
+#include "UnrealClient.h"
 #include "EngineUtils.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
@@ -17,6 +18,23 @@
 void ADuelPlayerController::TickSmokeTest()
 {
 #if !UE_BUILD_SHIPPING
+    // Explicit screenshot mode for visual QA, inert during ordinary play.
+    FString Preview;
+    if(FParse::Value(FCommandLine::Get(),TEXT("DuelPreview="),Preview))
+    {
+        const double PreviewNow=FPlatformTime::Seconds();
+        if(SmokeStart==0) SmokeStart=PreviewNow;
+        if(SmokeExitAt>0)
+        {
+            if(PreviewNow>=SmokeExitAt) FPlatformMisc::RequestExit(false);
+        }
+        else if(PreviewNow-SmokeStart>8)
+        {
+            FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),Preview+TEXT(".png")),true,false);
+            SmokeExitAt=PreviewNow+2;
+        }
+        return;
+    }
     FString TestRole;
     if (!FParse::Value(FCommandLine::Get(), TEXT("DuelSmoke="), TestRole) || (TestRole != TEXT("Host") && TestRole != TEXT("Client"))) return;
     const double Now = FPlatformTime::Seconds();

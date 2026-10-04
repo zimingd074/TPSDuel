@@ -36,6 +36,7 @@ public:
     int32 GetAmmo() const { return Ammo; }
     bool IsReloading() const { return bReloading; }
     bool IsProtected() const { return bProtected; }
+    bool IsAiming() const { return bAiming; }
 
 protected:
     UPROPERTY(VisibleAnywhere) USpringArmComponent* CameraBoom;

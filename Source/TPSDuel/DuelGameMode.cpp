@@ -1,4 +1,6 @@
 #include "DuelGameMode.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "DuelArena.h"
 #include "DuelCharacter.h"
 #include "DuelGameState.h"
@@ -216,4 +218,16 @@ void ADuelGameMode::EndPlay(const EEndPlayReason::Type Reason)
 {
     StopRound();
     Super::EndPlay(Reason);
+}
+void ADuelMenuGameMode::BeginPlay()
+{
+    Super::BeginPlay();
+    GetWorld()->SpawnActor<ADuelArena>();
+    const FVector Eye(-1380,-930,330);
+    ACameraActor* Camera=GetWorld()->SpawnActor<ACameraActor>(Eye,(FVector(250,100,190)-Eye).Rotation());
+    if(Camera)
+    {
+        Camera->GetCameraComponent()->SetFieldOfView(85);
+        if(APlayerController* PC=GetWorld()->GetFirstPlayerController()) PC->SetViewTarget(Camera);
+    }
 }

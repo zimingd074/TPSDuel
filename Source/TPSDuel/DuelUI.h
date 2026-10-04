@@ -10,8 +10,10 @@ public:
     SLATE_BEGIN_ARGS(SDuelOverlay) {} SLATE_ARGUMENT(ADuelPlayerController*, Owner) SLATE_END_ARGS()
     void Construct(const FArguments& Args);
 private:
-    FText ScoreText() const;
     FText HealthText() const;
+    FText AmmoText() const;
+    FText TeamScore(int32 Slot) const;
+    float HealthFraction() const;
     FText PhaseText() const;
     FText ConnectionText() const;
     EVisibility FrontVisibility() const;

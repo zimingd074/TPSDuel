@@ -9,6 +9,9 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Animation/AnimInstance.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -48,6 +51,13 @@ ADuelCharacter::ADuelCharacter()
     FollowCamera->FieldOfView = 90.f;
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+    static ConstructorHelpers::FObjectFinder<USkeletalMesh> Soldier(TEXT("/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin"));
+    static ConstructorHelpers::FClassFinder<UAnimInstance> Locomotion(TEXT("/Game/Mannequin/Animations/ThirdPerson_AnimBP"));
+    GetMesh()->SetSkeletalMesh(Soldier.Object);
+    GetMesh()->SetRelativeLocation(FVector(0,0,-88));
+    GetMesh()->SetRelativeRotation(FRotator(0,-90,0));
+    GetMesh()->SetAnimInstanceClass(Locomotion.Class);
+    GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
     Body->SetupAttachment(GetRootComponent());
     Body->SetStaticMesh(Cube.Object);
@@ -70,6 +80,20 @@ ADuelCharacter::ADuelCharacter()
     ShieldMarker->SetRelativeScale3D(FVector(.2f));
     for (UStaticMeshComponent* Part : {Body, Head, Rifle, ShieldMarker})
         Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    // A simple assembled weapon, keeping server muzzle coordinates unchanged.
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> WeaponMaterial(TEXT("/Game/Materials/M_Metal.M_Metal"));
+    auto WeaponPart=[this](const TCHAR* Name,UStaticMesh* Shape,FVector Location,FVector Scale,FRotator Rotation)
+    {
+        auto* Part=CreateDefaultSubobject<UStaticMeshComponent>(Name);
+        Part->SetupAttachment(Rifle); Part->SetStaticMesh(Shape); Part->SetRelativeLocation(Location);
+        Part->SetAbsolute(false,false,true); Part->SetRelativeScale3D(Scale); Part->SetRelativeRotation(Rotation);
+        Part->SetCollisionEnabled(ECollisionEnabled::NoCollision); Part->SetMaterial(0,WeaponMaterial.Object);
+    };
+    WeaponPart(TEXT("Barrel"),Cylinder.Object,FVector(43,0,0),FVector(.045f,.045f,.35f),FRotator(90,0,0));
+    WeaponPart(TEXT("Stock"),Cube.Object,FVector(-55,0,0),FVector(.24f,.11f,.14f),FRotator::ZeroRotator);
+    WeaponPart(TEXT("Magazine"),Cube.Object,FVector(-5,0,-85),FVector(.13f,.09f,.2f),FRotator(-12,0,0));
+    WeaponPart(TEXT("Sight"),Cube.Object,FVector(10,0,65),FVector(.12f,.06f,.045f),FRotator::ZeroRotator);
 }
 
 void ADuelCharacter::BeginPlay()
@@ -83,13 +107,15 @@ void ADuelCharacter::BeginPlay()
         ServerAimRotation = GetActorRotation();
         GrantProtection();
     }
-    UMaterialInterface* Material = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_DuelColor.M_DuelColor"));
+    UMaterialInterface* Material = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_Paint.M_Paint"));
     if (Material)
     {
         BodyMaterial = UMaterialInstanceDynamic::Create(Material, this);
         HeadMaterial = UMaterialInstanceDynamic::Create(Material, this);
         Body->SetMaterial(0, BodyMaterial);
         Head->SetMaterial(0, HeadMaterial);
+        GetMesh()->SetMaterial(0,BodyMaterial);
+        GetMesh()->SetMaterial(1,BodyMaterial);
         auto ColorPart = [this, Material](UStaticMeshComponent* Part, FLinearColor Color)
         {
             UMaterialInstanceDynamic* Instance = UMaterialInstanceDynamic::Create(Material, this);
@@ -145,9 +171,10 @@ void ADuelCharacter::Tick(float DeltaSeconds)
         if (BodyMaterial) BodyMaterial->SetVectorParameterValue(TEXT("Color"), Color);
         if (HeadMaterial) HeadMaterial->SetVectorParameterValue(TEXT("Color"), Color);
     }
-    Body->SetVisibility(IsAlive());
-    Head->SetVisibility(IsAlive());
-    Rifle->SetVisibility(IsAlive());
+    Body->SetVisibility(false);
+    Head->SetVisibility(false);
+    GetMesh()->SetVisibility(IsAlive());
+    Rifle->SetVisibility(IsAlive(),true);
     const float Pitch = IsLocallyControlled() ? LocalAim().Pitch : FMath::UnwindDegrees(GetBaseAimRotation().Pitch);
     Rifle->SetRelativeRotation(FRotator(Pitch, 0, 0));
     if (IsLocallyControlled())

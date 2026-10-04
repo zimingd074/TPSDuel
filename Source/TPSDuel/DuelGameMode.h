@@ -40,4 +40,5 @@ class TPSDUEL_API ADuelMenuGameMode : public AGameModeBase
     GENERATED_BODY()
 public:
     ADuelMenuGameMode();
+    virtual void BeginPlay() override;
 };

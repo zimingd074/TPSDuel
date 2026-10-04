@@ -55,4 +55,75 @@ for name in ("L_Menu", "L_Arena"):
         if not unreal.EditorLevelLibrary.save_current_level():
             raise RuntimeError("Could not save map " + path)
 
-unreal.log("TPSDuel: maps, unlit material and original placeholder fire sound initialized.")
+# Small PBR library built from the engine's bundled Starter Content textures.
+# File names are stable so repeated Bootstrap runs preserve any hand edits.
+library = unreal.MaterialEditingLibrary
+for name, texture, roughness, metallic in (
+        ("Concrete", "Concrete_Poured", 0.88, 0.0),
+        ("Brick", "Brick_Clay_Old", 0.9, 0.0),
+        ("Wood", "Wood_Pine", 0.82, 0.0),
+        ("Metal", "Metal_Steel", 0.48, 0.65),
+        ("Paint", None, 0.68, 0.1)):
+    path = "/Game/Materials/M_" + name
+    if unreal.EditorAssetLibrary.does_asset_exist(path):
+        if name == "Paint":
+            existing = unreal.EditorAssetLibrary.load_asset(path)
+            if not existing.get_editor_property("used_with_skeletal_mesh"):
+                existing.set_editor_property("used_with_skeletal_mesh", True)
+                library.recompile_material(existing)
+                if not unreal.EditorAssetLibrary.save_loaded_asset(existing):
+                    raise RuntimeError("Could not save skeletal-mesh material usage")
+        continue
+    mat = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+        "M_" + name, "/Game/Materials", unreal.Material, unreal.MaterialFactoryNew())
+    if name == "Paint":
+        mat.set_editor_property("used_with_skeletal_mesh", True)
+    color = library.create_material_expression(mat, unreal.MaterialExpressionVectorParameter, -600, 0)
+    color.set_editor_property("parameter_name", "Color")
+    color.set_editor_property("default_value", unreal.LinearColor(1, 1, 1, 1))
+    if texture:
+        uv = library.create_material_expression(mat, unreal.MaterialExpressionTextureCoordinate, -1000, 200)
+        tile = library.create_material_expression(mat, unreal.MaterialExpressionScalarParameter, -1000, 350)
+        tile.set_editor_property("parameter_name", "Tiling")
+        tile.set_editor_property("default_value", 1.0)
+        coords = library.create_material_expression(mat, unreal.MaterialExpressionMultiply, -800, 200)
+        library.connect_material_expressions(uv, "", coords, "A")
+        library.connect_material_expressions(tile, "", coords, "B")
+        for suffix, prop in (("D", unreal.MaterialProperty.MP_BASE_COLOR), ("N", unreal.MaterialProperty.MP_NORMAL)):
+            tex = unreal.EditorAssetLibrary.load_asset("/Game/StarterContent/Textures/T_" + texture + "_" + suffix)
+            if not tex:
+                raise RuntimeError("Missing bundled texture: " + texture + "_" + suffix)
+            tex.set_editor_property("max_texture_size", 1024)
+            unreal.EditorAssetLibrary.save_loaded_asset(tex)
+            sample = library.create_material_expression(mat, unreal.MaterialExpressionTextureSample, -600, 200 if suffix == "D" else 500)
+            sample.set_editor_property("texture", tex)
+            if suffix == "N":
+                sample.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL)
+            library.connect_material_expressions(coords, "", sample, "UVs")
+            if suffix == "D":
+                tint = library.create_material_expression(mat, unreal.MaterialExpressionMultiply, -250, 0)
+                library.connect_material_expressions(sample, "RGB", tint, "A")
+                library.connect_material_expressions(color, "", tint, "B")
+                library.connect_material_property(tint, "", prop)
+            else:
+                library.connect_material_property(sample, "RGB", prop)
+    else:
+        library.connect_material_property(color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    for value, prop in ((roughness, unreal.MaterialProperty.MP_ROUGHNESS), (metallic, unreal.MaterialProperty.MP_METALLIC)):
+        expression = library.create_material_expression(mat, unreal.MaterialExpressionConstant, -200, 700)
+        expression.set_editor_property("r", value)
+        library.connect_material_property(expression, "", prop)
+    library.recompile_material(mat)
+    unreal.EditorAssetLibrary.save_loaded_asset(mat)
+
+if not unreal.EditorAssetLibrary.does_asset_exist("/Game/Materials/M_Sky"):
+    sky = unreal.AssetToolsHelpers.get_asset_tools().create_asset("M_Sky", "/Game/Materials", unreal.Material, unreal.MaterialFactoryNew())
+    sky.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    sky.set_editor_property("two_sided", True)
+    color = library.create_material_expression(sky, unreal.MaterialExpressionConstant3Vector, -200, 0)
+    color.set_editor_property("constant", unreal.LinearColor(0.35, 0.52, 0.7, 1))
+    library.connect_material_property(color, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    library.recompile_material(sky)
+    unreal.EditorAssetLibrary.save_loaded_asset(sky)
+
+unreal.log("TPSDuel: maps, PBR warehouse materials and original placeholder fire sound initialized.")

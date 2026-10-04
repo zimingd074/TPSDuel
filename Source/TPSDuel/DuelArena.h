@@ -12,4 +12,6 @@ public:
     virtual void BeginPlay() override;
 private:
     UPROPERTY() TArray<UStaticMeshComponent*> Blocks;
+    TArray<FLinearColor> Tints;
+    TArray<float> Tiles;
 };

@@ -51,7 +51,7 @@ try {
 } finally {
     foreach($taskProcess in @($taskClient,$taskHost)) {
         if($taskProcess -and -not $taskProcess.HasExited) {
-            if(-not $taskProcess.WaitForExit(6000)) { Stop-Process -Id $taskProcess.Id -Force }
+            if(-not $taskProcess.WaitForExit(6000)) { Stop-Process -Id $taskProcess.Id -Force -ErrorAction SilentlyContinue }
         }
     }
 }
