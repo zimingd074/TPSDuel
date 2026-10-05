@@ -7,5 +7,6 @@ public class TPSDuelEditorTarget : TargetRules
         Type = TargetType.Editor;
         DefaultBuildSettings = BuildSettingsVersion.V2;
         ExtraModuleNames.Add("TPSDuel");
+        ExtraModuleNames.Add("TPSDuelEditor");
     }
 }

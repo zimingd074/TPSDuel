@@ -27,8 +27,16 @@ function Build-Editor {
 function Initialize-Assets {
     & $taskEditor $taskProject "-ExecutePythonScript=$(Join-Path $PSScriptRoot 'InitializeAssets.py')" -unattended -nosplash -NullRHI -stdout -FullStdOutLogOutput -UTF8Output
     if ($LASTEXITCODE -ne 0) { throw "Asset initialization failed ($LASTEXITCODE)." }
+    if (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\PolyHaven\concrete_floor_worn_001\manifest.json')) {
+        $taskImport = Get-Content -LiteralPath (Join-Path $taskProjectRoot 'Saved\FreeAssetsImport.json') -Raw | ConvertFrom-Json
+        if ($taskImport.state -ne 'complete' -or $taskImport.assets.Count -ne 3) { throw 'Free asset initialization failed; inspect Saved/import-free-assets.log and Saved/Logs/TPSDuel.log.' }
+    }
     foreach ($taskAsset in @('Content\Maps\L_Menu.umap','Content\Maps\L_Arena.umap','Content\Materials\M_DuelColor.uasset','Content\Materials\M_Concrete.uasset','Content\Materials\M_Brick.uasset','Content\Materials\M_Wood.uasset','Content\Materials\M_Metal.uasset','Content\Materials\M_Paint.uasset','Content\Materials\M_Sky.uasset','Content\Mannequin\Character\Mesh\SK_Mannequin.uasset','Content\Audio\S_Fire.uasset')) {
         if (-not (Test-Path -LiteralPath (Join-Path $taskProjectRoot $taskAsset))) { throw "Asset initialization incomplete: $taskAsset" }
+    }
+    if (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\Fab\Quantum\RecoveredTextures.json')) {
+        $taskQuantum = Get-Content -LiteralPath (Join-Path $taskProjectRoot 'Saved\QuantumPreparation.json') -Raw | ConvertFrom-Json
+        if ($taskQuantum.state -ne 'prepared') { throw 'Quantum character preparation failed; inspect Saved/Logs/TPSDuel.log.' }
     }
 }
 switch ($Action) {
@@ -74,7 +82,7 @@ switch ($Action) {
                 $taskData = @($taskZip.Entries | Where-Object { $_.FullName -match '^assets/.*\.(obb(\.png)?|pak)$' -and $_.Length -gt 0 })
                 if ($taskData.Count -lt 1) { throw 'APK is missing embedded game data. Check the UAT package step and bPackageDataInsideApk.' }
             } finally { $taskZip.Dispose() }
-            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.1.0\Android\TPSDuel-arm64.apk'
+            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.3.0\Android\TPSDuel-arm64.apk'
             if(Test-Path -LiteralPath $taskPreviousAPK){
                 & (Join-Path $PSScriptRoot 'CheckAndroidUpdate.ps1') -PreviousAPK $taskPreviousAPK -NewAPK $taskAPK.FullName -AndroidSDKRoot $AndroidSDKRoot -JavaRoot $JavaRoot
             }

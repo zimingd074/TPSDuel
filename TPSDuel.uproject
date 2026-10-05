@@ -3,7 +3,10 @@
   "EngineAssociation": "4.27",
   "Category": "Games",
   "Description": "Two-player LAN third-person shooting prototype",
-  "Modules": [{"Name": "TPSDuel", "Type": "Runtime", "LoadingPhase": "Default"}],
+  "Modules": [
+    {"Name": "TPSDuel", "Type": "Runtime", "LoadingPhase": "Default"},
+    {"Name": "TPSDuelEditor", "Type": "Editor", "LoadingPhase": "Default"}
+  ],
   "Plugins": [
     {"Name": "PythonScriptPlugin", "Enabled": true, "WhitelistTargets": ["Editor"]},
     {"Name": "EditorScriptingUtilities", "Enabled": true, "WhitelistTargets": ["Editor"]},

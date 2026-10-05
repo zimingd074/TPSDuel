@@ -16,3 +16,8 @@
 
 # Project-local downloaded toolchains
 /LocalToolchain/
+
+# Licensed Fab source assets and imported assets are kept local.
+# Game packages may include them; standalone source redistribution is restricted.
+/Assets/Source/Fab/
+/Content/ThirdParty/

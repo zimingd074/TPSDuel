@@ -126,4 +126,15 @@ if not unreal.EditorAssetLibrary.does_asset_exist("/Game/Materials/M_Sky"):
     library.recompile_material(sky)
     unreal.EditorAssetLibrary.save_loaded_asset(sky)
 
-unreal.log("TPSDuel: maps, PBR warehouse materials and original placeholder fire sound initialized.")
+if os.path.isfile(os.path.join(project, "Assets", "Source", "PolyHaven", "concrete_floor_worn_001", "manifest.json")):
+    import runpy
+    runpy.run_path(os.path.join(project, "tools", "ImportFreeAssets.py"))
+
+quantum_source = os.path.join(project, "Assets", "Source", "Fab", "Quantum")
+if os.path.isfile(os.path.join(quantum_source, "FBX", "SKM_Character.fbx")):
+    import runpy
+    runpy.run_path(os.path.join(project, "tools", "ImportQuantumAssets.py"))
+    if os.path.isfile(os.path.join(quantum_source, "RecoveredTextures.json")):
+        runpy.run_path(os.path.join(project, "tools", "PrepareQuantumAssets.py"))
+
+unreal.log("TPSDuel: maps, warehouse materials and acquired character assets initialized.")

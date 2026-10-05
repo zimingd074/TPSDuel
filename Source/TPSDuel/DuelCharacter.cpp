@@ -53,10 +53,18 @@ ADuelCharacter::ADuelCharacter()
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     static ConstructorHelpers::FObjectFinder<USkeletalMesh> Soldier(TEXT("/Game/Mannequin/Character/Mesh/SK_Mannequin.SK_Mannequin"));
     static ConstructorHelpers::FClassFinder<UAnimInstance> Locomotion(TEXT("/Game/Mannequin/Animations/ThirdPerson_AnimBP"));
+    static ConstructorHelpers::FObjectFinder<USkeletalMesh> Quantum(TEXT("/Game/ThirdParty/Quantum/SKM_Character.SKM_Character"));
+    static ConstructorHelpers::FClassFinder<UAnimInstance> QuantumLocomotion(TEXT("/Game/ThirdParty/Quantum/Animations/Q_ThirdPerson_AnimBP"));
+    bQuantumCharacter = Quantum.Succeeded() && QuantumLocomotion.Succeeded();
     GetMesh()->SetSkeletalMesh(Soldier.Object);
     GetMesh()->SetRelativeLocation(FVector(0,0,-88));
     GetMesh()->SetRelativeRotation(FRotator(0,-90,0));
     GetMesh()->SetAnimInstanceClass(Locomotion.Class);
+    if (bQuantumCharacter)
+    {
+        GetMesh()->SetSkeletalMesh(Quantum.Object);
+        GetMesh()->SetAnimInstanceClass(QuantumLocomotion.Class);
+    }
     GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
     Body->SetupAttachment(GetRootComponent());
@@ -73,6 +81,15 @@ ADuelCharacter::ADuelCharacter()
     Rifle->SetStaticMesh(Cube.Object);
     Rifle->SetRelativeLocation(FVector(65, 25, 40));
     Rifle->SetRelativeScale3D(FVector(.75f, .12f, .15f));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> QuantumRifle(TEXT("/Game/ThirdParty/Quantum/SM_Rifle.SM_Rifle"));
+    if (bQuantumCharacter && QuantumRifle.Succeeded())
+    {
+        Rifle->SetupAttachment(GetMesh(), TEXT("hand_r"));
+        Rifle->SetStaticMesh(QuantumRifle.Object);
+        Rifle->SetRelativeScale3D(FVector(1.f));
+        Rifle->SetRelativeLocation(FVector::ZeroVector);
+        Rifle->SetAbsolute(false, true, false);
+    }
     ShieldMarker = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ShieldMarker"));
     ShieldMarker->SetupAttachment(GetRootComponent());
     ShieldMarker->SetStaticMesh(Sphere.Object);
@@ -90,10 +107,13 @@ ADuelCharacter::ADuelCharacter()
         Part->SetAbsolute(false,false,true); Part->SetRelativeScale3D(Scale); Part->SetRelativeRotation(Rotation);
         Part->SetCollisionEnabled(ECollisionEnabled::NoCollision); Part->SetMaterial(0,WeaponMaterial.Object);
     };
-    WeaponPart(TEXT("Barrel"),Cylinder.Object,FVector(43,0,0),FVector(.045f,.045f,.35f),FRotator(90,0,0));
-    WeaponPart(TEXT("Stock"),Cube.Object,FVector(-55,0,0),FVector(.24f,.11f,.14f),FRotator::ZeroRotator);
-    WeaponPart(TEXT("Magazine"),Cube.Object,FVector(-5,0,-85),FVector(.13f,.09f,.2f),FRotator(-12,0,0));
-    WeaponPart(TEXT("Sight"),Cube.Object,FVector(10,0,65),FVector(.12f,.06f,.045f),FRotator::ZeroRotator);
+    if (!bQuantumCharacter)
+    {
+        WeaponPart(TEXT("Barrel"),Cylinder.Object,FVector(43,0,0),FVector(.045f,.045f,.35f),FRotator(90,0,0));
+        WeaponPart(TEXT("Stock"),Cube.Object,FVector(-55,0,0),FVector(.24f,.11f,.14f),FRotator::ZeroRotator);
+        WeaponPart(TEXT("Magazine"),Cube.Object,FVector(-5,0,-85),FVector(.13f,.09f,.2f),FRotator(-12,0,0));
+        WeaponPart(TEXT("Sight"),Cube.Object,FVector(10,0,65),FVector(.12f,.06f,.045f),FRotator::ZeroRotator);
+    }
 }
 
 void ADuelCharacter::BeginPlay()
@@ -114,15 +134,27 @@ void ADuelCharacter::BeginPlay()
         HeadMaterial = UMaterialInstanceDynamic::Create(Material, this);
         Body->SetMaterial(0, BodyMaterial);
         Head->SetMaterial(0, HeadMaterial);
-        GetMesh()->SetMaterial(0,BodyMaterial);
-        GetMesh()->SetMaterial(1,BodyMaterial);
+        if (bQuantumCharacter)
+        {
+            const int32 PatchSlot = GetMesh()->GetMaterialIndex(TEXT("M_Patches"));
+            if (PatchSlot != INDEX_NONE)
+            {
+                BodyMaterial = UMaterialInstanceDynamic::Create(GetMesh()->GetMaterial(PatchSlot), this);
+                GetMesh()->SetMaterial(PatchSlot, BodyMaterial);
+            }
+        }
+        else
+        {
+            GetMesh()->SetMaterial(0,BodyMaterial);
+            GetMesh()->SetMaterial(1,BodyMaterial);
+        }
         auto ColorPart = [this, Material](UStaticMeshComponent* Part, FLinearColor Color)
         {
             UMaterialInstanceDynamic* Instance = UMaterialInstanceDynamic::Create(Material, this);
             Instance->SetVectorParameterValue(TEXT("Color"), Color);
             Part->SetMaterial(0, Instance);
         };
-        ColorPart(Rifle, FLinearColor(.1f, .12f, .16f));
+        if (!bQuantumCharacter) ColorPart(Rifle, FLinearColor(.1f, .12f, .16f));
         ColorPart(ShieldMarker, FLinearColor(.1f, 1.f, .3f));
     }
     FireSound = LoadObject<USoundBase>(nullptr, TEXT("/Game/Audio/S_Fire.S_Fire"));
@@ -176,7 +208,10 @@ void ADuelCharacter::Tick(float DeltaSeconds)
     GetMesh()->SetVisibility(IsAlive());
     Rifle->SetVisibility(IsAlive(),true);
     const float Pitch = IsLocallyControlled() ? LocalAim().Pitch : FMath::UnwindDegrees(GetBaseAimRotation().Pitch);
-    Rifle->SetRelativeRotation(FRotator(Pitch, 0, 0));
+    if (bQuantumCharacter)
+        Rifle->SetWorldRotation(FRotator(Pitch, GetActorRotation().Yaw-90.f, 0));
+    else
+        Rifle->SetRelativeRotation(FRotator(Pitch, 0, 0));
     if (IsLocallyControlled())
     {
         FollowCamera->FieldOfView = FMath::FInterpTo(FollowCamera->FieldOfView, bAiming ? 65.f : 90.f, DeltaSeconds, 12.f);

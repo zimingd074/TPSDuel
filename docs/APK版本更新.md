@@ -21,9 +21,9 @@ Set-Location D:\TPSDuel
 | --- | --- | --- |
 | 包名 | `com.tpsduel.prototype` | 保持一致 |
 | 签名 | Android Debug 测试证书 | 同一条测试更新链保持同一密钥 |
-| StoreVersion / versionCode | 2 | 下一次改为 3，再下一次改为 4 |
-| VersionDisplayName / versionName | 0.2.0 | 改为用户可见的新版本，例如 0.3.0 |
-| ProjectVersion | 0.2.0 | 与 Windows 和 Android 发布版本一起更新 |
+| StoreVersion / versionCode | 4 | 下一次改为 5，再下一次改为 6 |
+| VersionDisplayName / versionName | 0.3.1 | 改为用户可见的新版本，例如 0.4.0 |
+| ProjectVersion | 0.3.1 | 与 Windows 和 Android 发布版本一起更新 |
 
 Android 版本配置位于 `Config/DefaultEngine.ini` 的 AndroidRuntimeSettings 段；工程版本位于 `Config/DefaultGame.ini`。旧测试 APK 实际显示 versionCode=1、versionName=1.0，已归档在 `Builds/Releases/0.1.0/Android`，不是新 APK。
 
@@ -51,7 +51,7 @@ Set-Location D:\TPSDuel
 
 该校验确认安装包的更新条件，不能替代真实手机上的覆盖安装、启动和联机验收。连接新版房间时 PC 和手机应使用本次配套构建；跨版本兼容没有得到保证。更新前结束当前对局，更新后重新建房。
 
-本次最终 v0.2 APK 已归档到 `Builds/Releases/0.2.0/Android/TPSDuel-arm64.apk`。下一版可将它作为 `-PreviousAPK` 的对比基准。
+v0.3.0 APK 已归档到 `Builds/Releases/0.3.0/Android/TPSDuel-arm64.apk`，本轮构建和校验默认以它为基准。v0.3.1 完成打包后的最终包归档到 `Builds/Releases/0.3.1/Android/TPSDuel-arm64.apk`；下一轮应将校验基准更新为 v0.3.1。
 
 ## 将来是否能像商业游戏一样自动更新
 

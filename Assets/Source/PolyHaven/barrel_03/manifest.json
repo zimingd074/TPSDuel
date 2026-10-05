@@ -1,0 +1,41 @@
+{
+  "asset": "barrel_03",
+  "source": "https://polyhaven.com/a/barrel_03",
+  "license": "CC0",
+  "licenseUrl": "https://polyhaven.com/license",
+  "resolution": "1k",
+  "files": [
+    {
+      "map": "Diffuse",
+      "file": "barrel_03_diff_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/barrel_03/barrel_03_diff_1k.jpg",
+      "md5": "6e77dc1af60c48787fd80dbbcf125040",
+      "sha256": "62FEB27DFA9A0DAF3F323FDC1DDC2D8E4A5996CF2C72FE50197B55C2B9CBA7F3",
+      "bytes": 149997
+    },
+    {
+      "map": "nor_dx",
+      "file": "barrel_03_nor_dx_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/barrel_03/barrel_03_nor_dx_1k.jpg",
+      "md5": "5319ce421277b04c7bae774028c678b3",
+      "sha256": "4442577160A90D5315E3C67290937655DB2CABB647BBA18807142BB22FDB1AE3",
+      "bytes": 126483
+    },
+    {
+      "map": "arm",
+      "file": "barrel_03_arm_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/barrel_03/barrel_03_arm_1k.jpg",
+      "md5": "3520338e30b4d257745db34848098688",
+      "sha256": "2CEC2338B36D7322BEF55E6A1D0884B223C5ED383CF986A58BFA461478C64C7E",
+      "bytes": 249922
+    },
+    {
+      "map": "fbx",
+      "file": "barrel_03_1k.fbx",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/barrel_03/barrel_03_1k.fbx",
+      "md5": "384ff77e186a6a77ba1ce0691a2d4f61",
+      "sha256": "12DFF3A0CF2FCEB771DDEDF3F9AB55ED6752EBB8E4B02B3DA6D10D28EE5230E3",
+      "bytes": 63996
+    }
+  ]
+}

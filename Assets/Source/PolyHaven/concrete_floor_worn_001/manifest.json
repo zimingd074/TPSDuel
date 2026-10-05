@@ -1,0 +1,33 @@
+{
+  "asset": "concrete_floor_worn_001",
+  "source": "https://polyhaven.com/a/concrete_floor_worn_001",
+  "license": "CC0",
+  "licenseUrl": "https://polyhaven.com/license",
+  "resolution": "1k",
+  "files": [
+    {
+      "map": "Diffuse",
+      "file": "concrete_floor_worn_001_diff_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_floor_worn_001/concrete_floor_worn_001_diff_1k.jpg",
+      "md5": "e35597cca586150b1ab2aa9a331a39c5",
+      "sha256": "6E40C0FC908F4D66431836F5ABE203F3A4EB064E88824378A91A46A26E2F464C",
+      "bytes": 118806
+    },
+    {
+      "map": "nor_dx",
+      "file": "concrete_floor_worn_001_nor_dx_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_floor_worn_001/concrete_floor_worn_001_nor_dx_1k.jpg",
+      "md5": "3b945b09e2bfaefa2dcbaff46bc7b461",
+      "sha256": "12398AD024177B05D4F316BAEFA785FB96B7195E5F1CCBEE7FAC75F4F7054C95",
+      "bytes": 111744
+    },
+    {
+      "map": "arm",
+      "file": "concrete_floor_worn_001_arm_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_floor_worn_001/concrete_floor_worn_001_arm_1k.jpg",
+      "md5": "8174fe8a5c982edef079c3c3775e5377",
+      "sha256": "B21E63637D04B969894BD40A45DF185D77671ED74B8955CD6E403C34ED465043",
+      "bytes": 152919
+    }
+  ]
+}

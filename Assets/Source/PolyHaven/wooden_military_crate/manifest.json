@@ -1,0 +1,41 @@
+{
+  "asset": "wooden_military_crate",
+  "source": "https://polyhaven.com/a/wooden_military_crate",
+  "license": "CC0",
+  "licenseUrl": "https://polyhaven.com/license",
+  "resolution": "1k",
+  "files": [
+    {
+      "map": "Diffuse",
+      "file": "wooden_military_crate_diff_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_military_crate/wooden_military_crate_diff_1k.jpg",
+      "md5": "042ee9d280238702cde679ea00bb37ec",
+      "sha256": "AA6ACE45BEF9947586C07283CD11A2D737FE0783A18DF69A76F77F59D4FB776D",
+      "bytes": 824093
+    },
+    {
+      "map": "nor_dx",
+      "file": "wooden_military_crate_nor_dx_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_military_crate/wooden_military_crate_nor_dx_1k.jpg",
+      "md5": "c7feeb48899bb8dde6140c24d08e4db7",
+      "sha256": "312A4DA822F49CBBC872A770476BC34C17CEBE3CE4458652A56B9EE2DDB9F7A7",
+      "bytes": 750933
+    },
+    {
+      "map": "arm",
+      "file": "wooden_military_crate_arm_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/wooden_military_crate/wooden_military_crate_arm_1k.jpg",
+      "md5": "b8f165142d290078ffb08b608cec9d48",
+      "sha256": "FE27FA628A9134F81958413C1A11DEEA8074FE40424C1A8A48EC459F2DDE7955",
+      "bytes": 782386
+    },
+    {
+      "map": "fbx",
+      "file": "wooden_military_crate_1k.fbx",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Models/fbx/1k/wooden_military_crate/wooden_military_crate_1k.fbx",
+      "md5": "47779080ce0e26b792240addea2e9897",
+      "sha256": "F42255AEAB7EA1E82DC5B06A17A444264B47400DA5327DBE589BB22E5E4EC85D",
+      "bytes": 636716
+    }
+  ]
+}

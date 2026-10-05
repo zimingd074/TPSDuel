@@ -79,6 +79,7 @@ private:
     float LastAimSendTime = -100.f;
     float LastAimReceiveTime = -100.f;
     int32 DisplayedSlot = -2;
+    bool bQuantumCharacter = false;
     FTimerHandle FireTimer;
     FTimerHandle FeedbackTimer;
     FTimerHandle ReloadTimer;

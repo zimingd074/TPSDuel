@@ -16,11 +16,22 @@ ADuelArena::ADuelArena()
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Concrete(TEXT("/Game/Materials/M_Concrete.M_Concrete"));
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> WornFloor(TEXT("/Game/Materials/M_WornFloor.M_WornFloor"));
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Brick(TEXT("/Game/Materials/M_Brick.M_Brick"));
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Metal(TEXT("/Game/Materials/M_Metal.M_Metal"));
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Wood(TEXT("/Game/Materials/M_Wood.M_Wood"));
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Paint(TEXT("/Game/Materials/M_Paint.M_Paint"));
     static ConstructorHelpers::FObjectFinder<UMaterialInterface> Sky(TEXT("/Game/Materials/M_Sky.M_Sky"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> Barrel(TEXT("/Game/FreeAssets/PolyHaven/Barrel/SM_Barrel.SM_Barrel"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> MilitaryCrate(TEXT("/Game/FreeAssets/PolyHaven/MilitaryCrate/SM_MilitaryCrate.SM_MilitaryCrate"));
+    auto Prop = [this](FString Name, UStaticMesh* Asset, FVector Location, float Scale, float Yaw)
+    {
+        auto* Mesh = CreateDefaultSubobject<UStaticMeshComponent>(*Name);
+        Mesh->SetupAttachment(GetRootComponent()); Mesh->SetStaticMesh(Asset);
+        Mesh->SetRelativeLocation(Location); Mesh->SetRelativeScale3D(FVector(Scale));
+        Mesh->SetRelativeRotation(FRotator(0,Yaw,0));
+        Mesh->SetCollisionProfileName(TEXT("BlockAll")); Mesh->SetCullDistance(5000.f);
+    };
     auto Block = [this](FString Name, FVector Location, FVector Size, UMaterialInterface* Material,
         FLinearColor Tint = FLinearColor::White, bool Solid = true, float Tiling = 1.f)
     {
@@ -33,7 +44,7 @@ ADuelArena::ADuelArena()
         return Mesh;
     };
     const FLinearColor Steel(.18f,.22f,.25f), Yellow(.95f,.58f,.08f);
-    Block(TEXT("Floor"),FVector(0,0,-20),FVector(3600,2400,40),Concrete.Object,FLinearColor(.62f,.65f,.64f),true,12);
+    Block(TEXT("Floor"),FVector(0,0,-20),FVector(3600,2400,40),WornFloor.Object,FLinearColor::White,true);
     Block(TEXT("North"),FVector(0,1200,360),FVector(3660,60,720),Brick.Object,FLinearColor(.75f,.67f,.58f),true,8);
     Block(TEXT("South"),FVector(0,-1200,360),FVector(3660,60,720),Brick.Object,FLinearColor(.75f,.67f,.58f),true,8);
     Block(TEXT("West"),FVector(-1800,0,360),FVector(60,2400,720),Concrete.Object,FLinearColor(.6f,.64f,.65f),true,6);
@@ -56,9 +67,14 @@ ADuelArena::ADuelArena()
         for(int32 End : {-1,1})
             Block(FString::Printf(TEXT("ContainerPost%s%d"),*S,End),Container+FVector(End*285,-Side*135,0),FVector(18,12,280),Metal.Object,Steel,false);
         Block(TEXT("ContainerRail")+S,Container+FVector(0,-Side*135,135),FVector(600,14,12),Metal.Object,Steel,false);
-        Block(TEXT("CargoCrate")+S,FVector(Side*450,Side*900,90),FVector(180,160,180),Wood.Object,FLinearColor(.8f,.63f,.41f),true,2);
-        for(int32 Rail : {-1,1})
-            Block(FString::Printf(TEXT("CrateBrace%s%d"),*S,Rail),FVector(Side*450+Rail*65,Side*817,90),FVector(15,6,180),Metal.Object,Steel,false);
+        // Real scanned crates retain a paired layout and use their own box collisions.
+        for(int32 Row : {-1,1})
+            for(int32 Layer=0; Layer<3; ++Layer)
+                Prop(FString::Printf(TEXT("MilitaryCrate%s_%d_%d"),*S,Row,Layer),MilitaryCrate.Object,
+                    FVector(Side*450,Side*900+Row*35,Layer*59.5f),1.28f,Side<0 ? 0.f : 180.f);
+        for(int32 Drum=0; Drum<3; ++Drum)
+            Prop(FString::Printf(TEXT("Barrel%s_%d"),*S,Drum),Barrel.Object,
+                FVector(Side*(1400+Drum*80),Side*1000,0),1.f,Side*20.f+Drum*35.f);
         Block(TEXT("Shutter")+S,FVector(Side*1766,Side*650,200),FVector(8,560,400),Metal.Object,FLinearColor(.32f,.36f,.38f),false,3);
         for(int32 Slat=0; Slat<10; ++Slat)
             Block(FString::Printf(TEXT("ShutterSlat%s%d"),*S,Slat),FVector(Side*1759,Side*650,Slat*38+20),FVector(6,560,4),Paint.Object,Steel,false);
