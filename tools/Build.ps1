@@ -88,7 +88,7 @@ switch ($Action) {
                 $taskData = @($taskZip.Entries | Where-Object { $_.FullName -match '^assets/.*\.(obb(\.png)?|pak)$' -and $_.Length -gt 0 })
                 if ($taskData.Count -lt 1) { throw 'APK is missing embedded game data. Check the UAT package step and bPackageDataInsideApk.' }
             } finally { $taskZip.Dispose() }
-            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.3.1\Android\TPSDuel-arm64.apk'
+            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.4.1\Android\TPSDuel-arm64.apk'
             if(Test-Path -LiteralPath $taskPreviousAPK){
                 & (Join-Path $PSScriptRoot 'CheckAndroidUpdate.ps1') -PreviousAPK $taskPreviousAPK -NewAPK $taskAPK.FullName -AndroidSDKRoot $AndroidSDKRoot -JavaRoot $JavaRoot
             }

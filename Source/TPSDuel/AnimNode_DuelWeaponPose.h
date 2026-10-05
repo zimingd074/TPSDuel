@@ -1,6 +1,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "BoneControllers/AnimNode_SkeletalControlBase.h"
+#include "DuelWeaponPose.h"
 #include "AnimNode_DuelWeaponPose.generated.h"
 
 USTRUCT(BlueprintInternalUseOnly)
@@ -16,8 +17,9 @@ struct TPSDUEL_API FAnimNode_DuelWeaponPose : public FAnimNode_SkeletalControlBa
 private:
     TArray<FBoneReference> Arms;
     TArray<FBoneReference> Fingers;
-    float Pitch = 0.f;
-    float Aim = 0.f;
-    float Reload = -1.f;
-    float Kick = 0.f;
+    TArray<FBoneReference> Legs;
+    FBoneReference Spine;
+    FDuelWeaponPose Weapon=FDuelWeaponPose::Calculate(0.f,0.f,-1.f,0.f);
+    float Carry = 0.f;
+    float LegYaw = 0.f;
 };

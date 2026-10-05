@@ -16,8 +16,86 @@
 #include "Engine/StaticMesh.h"
 #include "RawMesh.h"
 #include "AssetRegistryModule.h"
+#include "K2Node_DynamicCast.h"
+#include "AnimGraphNode_StateMachine.h"
+#include "AnimGraphNode_BlendSpacePlayer.h"
+#include "K2Node_VariableGet.h"
+#include "DuelAnimInstance.h"
 
 IMPLEMENT_MODULE(FDefaultModuleImpl, TPSDuelEditor)
+
+bool UDuelAssetLibrary::ConfigureQuantumLocomotion()
+{
+    auto* Blueprint=LoadObject<UAnimBlueprint>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Q_ThirdPerson_AnimBP.Q_ThirdPerson_AnimBP"));
+    if (!Blueprint) return false;
+    Blueprint->Modify(); Blueprint->ParentClass=UDuelAnimInstance::StaticClass();
+    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    FKismetEditorUtilities::CompileBlueprint(Blueprint);
+    TArray<UEdGraph*> Graphs; Blueprint->GetAllGraphs(Graphs);
+    bool Configured=false;
+    for (auto* Graph : Graphs)
+        for (auto* Node : TArray<UEdGraphNode*>(Graph->Nodes))
+            if (auto* Player=Cast<UAnimGraphNode_BlendSpacePlayer>(Node))
+            {
+                for (auto& Property : Player->ShowPinForProperties)
+                    if (Property.PropertyName==TEXT("PlayRate")) Property.bShowPin=true;
+                Player->ReconstructNode();
+                auto* Rate=Player->FindPin(TEXT("PlayRate"));
+                if (!Rate) return false;
+                UK2Node_VariableGet* Getter=nullptr;
+                for (auto* Candidate : Graph->Nodes)
+                    if (auto* Variable=Cast<UK2Node_VariableGet>(Candidate))
+                        if (Variable->VariableReference.GetMemberName()==TEXT("DuelLocomotionRate")) Getter=Variable;
+                if (!Getter)
+                {
+                    Getter=NewObject<UK2Node_VariableGet>(Graph);
+                    Getter->VariableReference.SetSelfMember(TEXT("DuelLocomotionRate"));
+                    Graph->AddNode(Getter,false,false); Getter->CreateNewGuid(); Getter->PostPlacedNewNode(); Getter->AllocateDefaultPins();
+                    Getter->NodePosX=Player->NodePosX-250; Getter->NodePosY=Player->NodePosY+160;
+                }
+                Rate->BreakAllPinLinks(); Getter->FindPinChecked(TEXT("DuelLocomotionRate"))->MakeLinkTo(Rate); Configured=true;
+            }
+    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+    FKismetEditorUtilities::CompileBlueprint(Blueprint); Blueprint->MarkPackageDirty();
+    return Configured && Blueprint->Status!=BS_Error;
+}
+
+TArray<FString> UDuelAssetLibrary::DescribeLocomotion()
+{
+    TArray<FString> Result;
+    auto* Blueprint=LoadObject<UAnimBlueprint>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Q_ThirdPerson_AnimBP.Q_ThirdPerson_AnimBP"));
+    if (!Blueprint) return Result;
+    TArray<UEdGraph*> Graphs;
+    Blueprint->GetAllGraphs(Graphs);
+    for (auto* Graph : Graphs)
+        for (auto* Node : Graph->Nodes)
+        {
+            FString Detail=Graph->GetName()+TEXT(": ")+Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
+            if (auto* CastNode=Cast<UK2Node_DynamicCast>(Node)) Detail+=TEXT(" target=")+GetPathNameSafe(CastNode->TargetType);
+            for (auto* Pin : Node->Pins)
+            {
+                if (Pin->Direction==EGPD_Input) Detail+=FString::Printf(TEXT(" [%s=%s links=%d]"),*Pin->PinName.ToString(),*Pin->DefaultValue,Pin->LinkedTo.Num());
+                for (auto* Link : Pin->LinkedTo) Detail+=FString::Printf(TEXT(" {%s <- %s.%s}"),*Pin->PinName.ToString(),*Link->GetOwningNode()->GetName(),*Link->PinName.ToString());
+            }
+            Result.Add(Detail);
+        }
+    for (const TCHAR* Name : {TEXT("Idle"),TEXT("Walk"),TEXT("Run")})
+    {
+        const FString Path=FString::Printf(TEXT("/Game/ThirdParty/Quantum/Animations/Q_ThirdPerson%s.Q_ThirdPerson%s"),Name,Name);
+        auto* Sequence=LoadObject<UAnimSequence>(nullptr,*Path);
+        if (!Sequence) continue;
+        for (const TCHAR* Bone : {TEXT("thigh_l"),TEXT("calf_l"),TEXT("foot_l"),TEXT("thigh_r")})
+        {
+            const int32 Index=Sequence->GetAnimationTrackNames().Find(FName(Bone));
+            if (Index==INDEX_NONE) { Result.Add(Path+TEXT(" missing ")+Bone); continue; }
+            const auto& Track=Sequence->GetRawAnimationTrack(Index);
+            float Maximum=0;
+            for (const auto& Rotation : Track.RotKeys) Maximum=FMath::Max(Maximum,Track.RotKeys[0].AngularDistance(Rotation));
+            Result.Add(FString::Printf(TEXT("%s %s keys=%d swing=%.2fdeg"),Name,Bone,Track.RotKeys.Num(),FMath::RadiansToDegrees(Maximum)));
+        }
+    }
+    return Result;
+}
 
 bool UDuelAssetLibrary::SplitQuantumRifle()
 {
@@ -93,26 +171,31 @@ bool UDuelAssetLibrary::InstallQuantumWeaponPose()
     for (UEdGraph* Graph : Blueprint->FunctionGraphs)
     {
         UAnimGraphNode_Root* Root=nullptr;
+        UAnimGraphNode_DuelWeaponPose* ExistingWeapon=nullptr;
+        UAnimGraphNode_StateMachine* Locomotion=nullptr;
         for (UEdGraphNode* Node : Graph->Nodes)
         {
-            if (Cast<UAnimGraphNode_DuelWeaponPose>(Node))
-            {
-                FKismetEditorUtilities::CompileBlueprint(Blueprint);
-                Blueprint->MarkPackageDirty();
-                return Blueprint->Status!=BS_Error;
-            }
+            if (auto* Candidate=Cast<UAnimGraphNode_DuelWeaponPose>(Node)) ExistingWeapon=Candidate;
+            if (auto* Candidate=Cast<UAnimGraphNode_StateMachine>(Node)) Locomotion=Candidate;
             if (auto* Candidate=Cast<UAnimGraphNode_Root>(Node)) Root=Candidate;
         }
         if (!Root) continue;
+        // Rebuild the complete pose chain, including assets saved by older tools.
+        // An existing grip node alone does not prove the locomotion is connected.
+        if (!Locomotion) return false;
         UEdGraphPin* Input=Root->FindPin(TEXT("Result"));
         if (!Input || Input->LinkedTo.Num()!=1) return false;
-        UEdGraphPin* Source=Input->LinkedTo[0];
+        UEdGraphPin* Source=Locomotion->FindPinChecked(TEXT("Pose"));
         auto AddNode=[Graph](UEdGraphNode* Node, int32 X)
         {
             Graph->AddNode(Node,false,false); Node->CreateNewGuid(); Node->PostPlacedNewNode();
             Node->AllocateDefaultPins(); Node->NodePosX=X; Node->NodePosY=200;
         };
         Blueprint->Modify(); Graph->Modify();
+        TArray<UEdGraphNode*> OldControls;
+        for (auto* Node : Graph->Nodes)
+            if (Cast<UAnimGraphNode_LocalToComponentSpace>(Node) || Cast<UAnimGraphNode_ComponentToLocalSpace>(Node) || Node==ExistingWeapon) OldControls.Add(Node);
+        for (auto* Node : OldControls) FBlueprintEditorUtils::RemoveNode(Blueprint,Node,true);
         auto* ToComponent=NewObject<UAnimGraphNode_LocalToComponentSpace>(Graph);
         auto* Weapon=NewObject<UAnimGraphNode_DuelWeaponPose>(Graph);
         auto* ToLocal=NewObject<UAnimGraphNode_ComponentToLocalSpace>(Graph);

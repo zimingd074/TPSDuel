@@ -1,6 +1,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "DuelWeaponPose.h"
 #include "DuelCharacter.generated.h"
 
 class UCameraComponent;
@@ -31,6 +32,7 @@ public:
     void GrantProtection();
     bool IsAlive() const { return Health > 0.f; }
     bool CanCombat() const;
+    bool CanUseWeapon() const;
     bool CanMove() const;
     float GetHealth() const { return Health; }
     int32 GetAmmo() const { return Ammo; }
@@ -39,6 +41,10 @@ public:
     bool IsAiming() const { return bAiming; }
     float GetVisualAimPitch() const;
     float GetVisualAimAlpha() const { return VisualAimAlpha; }
+    float GetVisualCarryAlpha() const { return VisualWeaponPose.CarryAlpha; }
+    const FDuelWeaponPose& GetVisualWeaponPose() const { return VisualWeaponPose; }
+    const FDuelWeaponPose& GetWeaponPoseForAnimation() const { return DesiredWeaponPose; }
+    bool IsFiring() const { return IsLocallyControlled() ? bLocalTrigger : bServerTrigger; }
     float GetReloadProgress() const;
     float GetVisualRecoil() const;
 
@@ -60,6 +66,7 @@ protected:
     UPROPERTY(Replicated) float ReloadStartedAt = -1.f;
     UPROPERTY(Replicated) bool bProtected = false;
     UPROPERTY(Replicated) bool bAiming = false;
+    UPROPERTY(Replicated) bool bServerTrigger = false;
 
     UFUNCTION() void OnRep_Health();
     UFUNCTION(Server, Reliable) void ServerFireIntent(bool Pressed, FRotator Aim);
@@ -74,11 +81,11 @@ private:
     void ClearProtection();
     void LocalFireFeedback();
     void RefreshMovement();
+    void UpdateWeaponAfterAnimation();
     void ComputeShotView(FVector& Origin, FVector& Direction) const;
     FRotator LocalAim() const;
     bool AcceptAim(const FRotator& Aim);
     FRotator ServerAimRotation;
-    bool bServerTrigger = false;
     bool bLocalTrigger = false;
     bool bMovementAllowed = true;
     float LastShotTime = -100.f;
@@ -87,6 +94,10 @@ private:
     int32 DisplayedSlot = -2;
     bool bQuantumCharacter = false;
     float VisualAimAlpha = 0.f;
+    float VisualCarryAlpha = 0.f;
+    FDuelWeaponPose VisualWeaponPose;
+    FDuelWeaponPose DesiredWeaponPose;
+    FDelegateHandle WeaponPoseFinalizedHandle;
     float VisualShotTime = -100.f;
     FTimerHandle FireTimer;
     FTimerHandle FeedbackTimer;

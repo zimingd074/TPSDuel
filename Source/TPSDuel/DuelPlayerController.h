@@ -43,6 +43,7 @@ private:
     void Turn(float Value);
     void LookUp(float Value);
     void TickSmokeTest();
+    bool TickInputTest();
     UFUNCTION(Server, Reliable) void ServerLoaded();
     UFUNCTION(Server, Reliable) void ServerReady();
     TSharedPtr<SDuelOverlay> Overlay;
@@ -57,5 +58,16 @@ private:
     bool SmokeReloadRequested = false;
     bool SmokeReloadSeen = false;
     bool SmokePreviewCamera = false;
+    int32 MotionSample = 0;
+    FVector MotionLastFoot = FVector::ZeroVector;
+    float MotionFootTravel = 0.f;
+    float MotionMaximumSpeed = 0.f;
+    bool MotionJumpSeen = false;
+    bool MotionFireRequested = false;
+    bool MotionReloadRequested = false;
+    int32 InputTestStage = 0;
+    double InputStageStart = 0;
+    int32 InputTestAmmo = 30;
+    bool InputReloadSeen = false;
     TWeakObjectPtr<ADuelCharacter> SmokePawns[2];
 };

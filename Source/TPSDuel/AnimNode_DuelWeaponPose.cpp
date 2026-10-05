@@ -1,11 +1,18 @@
 #include "AnimNode_DuelWeaponPose.h"
 #include "DuelCharacter.h"
+#include "DuelAnimInstance.h"
 #include "DuelWeaponPose.h"
 #include "Animation/AnimInstance.h"
 #include "TwoBoneIK.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 FAnimNode_DuelWeaponPose::FAnimNode_DuelWeaponPose()
 {
+    Spine.BoneName=TEXT("spine_01");
+    for (const TCHAR* Name : {TEXT("thigh_r"),TEXT("calf_r"),TEXT("foot_r"),TEXT("thigh_l"),TEXT("calf_l"),TEXT("foot_l")})
+    {
+        FBoneReference Bone; Bone.BoneName=Name; Legs.Add(Bone);
+    }
     for (const TCHAR* Name : {TEXT("upperarm_r"),TEXT("lowerarm_r"),TEXT("hand_r"),TEXT("upperarm_l"),TEXT("lowerarm_l"),TEXT("hand_l")})
     {
         FBoneReference Bone; Bone.BoneName=Name; Arms.Add(Bone);
@@ -23,14 +30,20 @@ void FAnimNode_DuelWeaponPose::PreUpdate(const UAnimInstance* Instance)
 {
     if (const auto* Character=Cast<ADuelCharacter>(Instance->GetOwningActor()))
     {
-        Pitch=Character->GetVisualAimPitch(); Aim=Character->GetVisualAimAlpha();
-        Reload=Character->GetReloadProgress(); Kick=Character->GetVisualRecoil();
+        Weapon=Character->GetWeaponPoseForAnimation();
+        if (const auto* DuelInstance=Cast<UDuelAnimInstance>(Instance)) DuelInstance->CacheWeaponPose(Weapon);
+        Carry=Weapon.CarryAlpha;
+        const FVector Local=Character->GetActorRotation().UnrotateVector(Character->GetVelocity());
+        LegYaw=Character->GetCharacterMovement()->IsFalling() || Local.SizeSquared2D()<100.f ? 0.f : FMath::RadiansToDegrees(FMath::Atan2(Local.Y,Local.X));
+        if (Local.X < -20.f) LegYaw=FMath::UnwindDegrees(LegYaw-180.f);
     }
 }
 void FAnimNode_DuelWeaponPose::InitializeBoneReferences(const FBoneContainer& RequiredBones)
 {
     for (auto& Bone : Arms) Bone.Initialize(RequiredBones);
     for (auto& Bone : Fingers) Bone.Initialize(RequiredBones);
+    for (auto& Bone : Legs) Bone.Initialize(RequiredBones);
+    Spine.Initialize(RequiredBones);
 }
 bool FAnimNode_DuelWeaponPose::IsValidToEvaluate(const USkeleton*, const FBoneContainer& RequiredBones)
 {
@@ -40,7 +53,36 @@ bool FAnimNode_DuelWeaponPose::IsValidToEvaluate(const USkeleton*, const FBoneCo
 void FAnimNode_DuelWeaponPose::EvaluateSkeletalControl_AnyThread(FComponentSpacePoseContext& Output, TArray<FBoneTransform>& Transforms)
 {
     const auto& Bones=Output.Pose.GetPose().GetBoneContainer();
-    const FDuelWeaponPose Weapon=FDuelWeaponPose::Calculate(Pitch,Aim,Reload,Kick);
+    // Reorient the animated foot trajectories for strafing without turning the
+    // pelvis/torso through 90 degrees. Keep each foot on its own side to avoid
+    // crossing knees. This is an IK adaptation of the supplied forward clips.
+    if (FMath::Abs(LegYaw)>1.f)
+        for (int32 Side=0; Side<2; ++Side)
+        {
+            if (!Legs[Side*3].IsValidToEvaluate(Bones) || !Legs[Side*3+1].IsValidToEvaluate(Bones) || !Legs[Side*3+2].IsValidToEvaluate(Bones)) continue;
+            const auto UpperIndex=Legs[Side*3].GetCompactPoseIndex(Bones);
+            const auto LowerIndex=Legs[Side*3+1].GetCompactPoseIndex(Bones);
+            const auto FootIndex=Legs[Side*3+2].GetCompactPoseIndex(Bones);
+            FTransform Reference=FTransform::Identity;
+            for (auto Index=FootIndex; Index!=INDEX_NONE; Index=Bones.GetParentBoneIndex(Index)) Reference=Reference*Bones.GetRefPoseTransform(Index);
+            FTransform Upper=Output.Pose.GetComponentSpaceTransform(UpperIndex);
+            FTransform Lower=Output.Pose.GetComponentSpaceTransform(LowerIndex);
+            FTransform Foot=Output.Pose.GetComponentSpaceTransform(FootIndex);
+            FVector Goal=Reference.GetLocation()+FQuat(FVector::UpVector,FMath::DegreesToRadians(LegYaw)).RotateVector(Foot.GetLocation()-Reference.GetLocation());
+            Goal.X=Side==0 ? FMath::Clamp(Goal.X,-54.f,-4.f) : FMath::Clamp(Goal.X,4.f,54.f);
+            AnimationCore::SolveTwoBoneIK(Upper,Lower,Foot,Upper.GetLocation()+FVector(Side==0 ? -12.f : 12.f,55.f,0),Goal,false,1.f,1.f);
+            TArray<FBoneTransform> Adjusted;
+            Adjusted.Emplace(UpperIndex,Upper); Adjusted.Emplace(LowerIndex,Lower); Adjusted.Emplace(FootIndex,Foot);
+            Output.Pose.LocalBlendCSBoneTransforms(Adjusted,1.f); Transforms.Append(Adjusted);
+        }
+    if (Spine.IsValidToEvaluate(Bones) && Carry>0.f)
+    {
+        const auto Index=Spine.GetCompactPoseIndex(Bones);
+        FTransform Upright=Output.Pose.GetComponentSpaceTransform(Index);
+        Upright.SetRotation(FQuat(FVector::ForwardVector,FMath::DegreesToRadians(10.f*Carry))*Upright.GetRotation());
+        TArray<FBoneTransform> Adjusted; Adjusted.Emplace(Index,Upright);
+        Output.Pose.LocalBlendCSBoneTransforms(Adjusted,1.f); Transforms.Append(Adjusted);
+    }
     for (int32 Side=0; Side<2; ++Side)
     {
         const auto UpperIndex=Arms[Side*3].GetCompactPoseIndex(Bones);

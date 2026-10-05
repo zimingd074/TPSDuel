@@ -1,5 +1,6 @@
 #include "DuelCharacter.h"
 #include "DuelWeaponPose.h"
+#include "DuelAnimInstance.h"
 #include "DuelGameMode.h"
 #include "DuelGameState.h"
 #include "DuelPlayerController.h"
@@ -29,6 +30,8 @@
 
 ADuelCharacter::ADuelCharacter()
 {
+    DesiredWeaponPose=FDuelWeaponPose::Calculate(0.f,0.f,-1.f,0.f);
+    VisualWeaponPose=DesiredWeaponPose;
     bReplicates = true;
     NetUpdateFrequency = 60.f;
     MinNetUpdateFrequency = 20.f;
@@ -37,7 +40,10 @@ ADuelCharacter::ADuelCharacter()
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     bUseControllerRotationYaw = true;
     GetCharacterMovement()->bOrientRotationToMovement = false;
-    GetCharacterMovement()->MaxWalkSpeed = 500.f;
+    // Match the imported locomotion blend space's full run sample (cm/s).
+    GetCharacterMovement()->MaxWalkSpeed = 375.f;
+    GetCharacterMovement()->MaxAcceleration = 1400.f;
+    GetCharacterMovement()->BrakingDecelerationWalking = 1800.f;
     GetCharacterMovement()->JumpZVelocity = 500.f;
     GetCharacterMovement()->AirControl = 0.3f;
     CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
@@ -123,6 +129,8 @@ ADuelCharacter::ADuelCharacter()
 void ADuelCharacter::BeginPlay()
 {
     Super::BeginPlay();
+    if (bQuantumCharacter)
+        WeaponPoseFinalizedHandle=GetMesh()->RegisterOnBoneTransformsFinalizedDelegate(FOnBoneTransformsFinalizedMultiCast::FDelegate::CreateUObject(this,&ADuelCharacter::UpdateWeaponAfterAnimation));
     const UDuelSettings* Rules = GetDefault<UDuelSettings>();
     if (HasAuthority())
     {
@@ -173,6 +181,7 @@ void ADuelCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     DOREPLIFETIME(ADuelCharacter, ReloadStartedAt);
     DOREPLIFETIME(ADuelCharacter, bProtected);
     DOREPLIFETIME(ADuelCharacter, bAiming);
+    DOREPLIFETIME(ADuelCharacter, bServerTrigger);
 }
 
 bool ADuelCharacter::CanCombat() const
@@ -184,6 +193,11 @@ bool ADuelCharacter::CanMove() const
 {
     const ADuelGameState* State = GetWorld()->GetGameState<ADuelGameState>();
     return IsAlive() && State && (State->Phase == EDuelPhase::Waiting || State->Phase == EDuelPhase::Playing);
+}
+bool ADuelCharacter::CanUseWeapon() const
+{
+    // Waiting is a practice area; damage and scoring still require Playing.
+    return CanMove();
 }
 void ADuelCharacter::RefreshMovement()
 {
@@ -214,14 +228,14 @@ void ADuelCharacter::Tick(float DeltaSeconds)
     Rifle->SetVisibility(IsAlive(),true);
     const float Pitch = GetVisualAimPitch();
     VisualAimAlpha=FMath::FInterpTo(VisualAimAlpha,bAiming ? 1.f : 0.f,DeltaSeconds,12.f);
+    const FVector LocalVelocity=GetActorRotation().UnrotateVector(GetVelocity());
+    const float Sideways=GetVelocity().Size2D()>10.f ? FMath::Abs(LocalVelocity.Y)/GetVelocity().Size2D() : 0.f;
+    GetCharacterMovement()->MaxWalkSpeed=bAiming ? 120.f : LocalVelocity.X < -20.f ? 220.f : FMath::Lerp(375.f,200.f,Sideways);
+    const float CarryTarget=(!bAiming && !IsFiring() && !bReloading) ? FMath::Clamp(GetVelocity().Size2D()/180.f,0.f,1.f) : 0.f;
+    VisualCarryAlpha=FMath::FInterpTo(VisualCarryAlpha,CarryTarget,DeltaSeconds,CarryTarget>VisualCarryAlpha ? 8.f : 20.f);
     if (bQuantumCharacter)
     {
-        const FDuelWeaponPose Pose=FDuelWeaponPose::Calculate(Pitch,VisualAimAlpha,GetReloadProgress(),GetVisualRecoil());
-        Rifle->SetRelativeTransform(Pose.Gun);
-        FTransform Mag=Pose.Gun;
-        // Magazine mesh vertices retain rifle coordinates; shift its well to the hand.
-        Mag.AddToTranslation(Pose.Magazine-Pose.Gun.TransformPosition(FVector(0,17,2)));
-        Magazine->SetRelativeTransform(Mag);
+        DesiredWeaponPose=FDuelWeaponPose::Calculate(Pitch,VisualAimAlpha,GetReloadProgress(),GetVisualRecoil(),VisualCarryAlpha);
         Magazine->SetVisibility(IsAlive() && Magazine->GetStaticMesh()!=nullptr);
     }
     else
@@ -230,13 +244,24 @@ void ADuelCharacter::Tick(float DeltaSeconds)
     {
         FollowCamera->FieldOfView = FMath::FInterpTo(FollowCamera->FieldOfView, bAiming ? 65.f : 90.f, DeltaSeconds, 12.f);
         CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, bAiming ? 220.f : 300.f, DeltaSeconds, 12.f);
-        if (!CanCombat() && bLocalTrigger) EndFire();
+        if (!CanUseWeapon() && bLocalTrigger) EndFire();
         if (bLocalTrigger && GetWorld()->TimeSeconds - LastAimSendTime >= .05f)
         {
             LastAimSendTime = GetWorld()->TimeSeconds;
             ServerAim(LocalAim());
         }
     }
+}
+void ADuelCharacter::UpdateWeaponAfterAnimation()
+{
+    // Apply the exact snapshot used by the completed skeletal pose. This also
+    // works when CharacterMovement evaluates animation before the actor tick.
+    const auto* Instance=Cast<UDuelAnimInstance>(GetMesh()->GetAnimInstance());
+    VisualWeaponPose=Instance ? Instance->GetWeaponPoseSnapshot() : DesiredWeaponPose;
+    Rifle->SetRelativeTransform(VisualWeaponPose.Gun);
+    FTransform Mag=VisualWeaponPose.Gun;
+    Mag.AddToTranslation(VisualWeaponPose.Magazine-VisualWeaponPose.Gun.TransformPosition(FVector(0,17,2)));
+    Magazine->SetRelativeTransform(Mag);
 }
 float ADuelCharacter::GetVisualAimPitch() const
 {
@@ -280,7 +305,7 @@ bool ADuelCharacter::AcceptAim(const FRotator& Aim)
 }
 void ADuelCharacter::BeginFire()
 {
-    if (!IsLocallyControlled() || bLocalTrigger || !CanCombat() || bReloading || Ammo <= 0) return;
+    if (!IsLocallyControlled() || bLocalTrigger || !CanUseWeapon() || bReloading || Ammo <= 0) return;
     bLocalTrigger = true;
     if (!HasAuthority())
     {
@@ -308,13 +333,13 @@ void ADuelCharacter::ServerFireIntent_Implementation(bool Pressed, FRotator Aim)
         GetWorldTimerManager().ClearTimer(FireTimer);
         return;
     }
-    if (!CanCombat() || bServerTrigger || bReloading || Ammo <= 0 || !AcceptAim(Aim)) return;
+    if (!CanUseWeapon() || bServerTrigger || bReloading || Ammo <= 0 || !AcceptAim(Aim)) return;
     bServerTrigger = true;
     FireOnce();
     if (bServerTrigger)
         GetWorldTimerManager().SetTimer(FireTimer, this, &ADuelCharacter::FireOnce, FMath::Max(.05f, GetDefault<UDuelSettings>()->FireInterval), true);
 }
-void ADuelCharacter::ServerAim_Implementation(FRotator Aim) { if (CanCombat()) AcceptAim(Aim); }
+void ADuelCharacter::ServerAim_Implementation(FRotator Aim) { if (CanUseWeapon()) AcceptAim(Aim); }
 void ADuelCharacter::SetAiming(bool Aiming)
 {
     if (!IsLocallyControlled()) return;
@@ -336,7 +361,7 @@ void ADuelCharacter::ComputeShotView(FVector& Origin, FVector& Direction) const
 void ADuelCharacter::FireOnce()
 {
     const UDuelSettings* Rules = GetDefault<UDuelSettings>();
-    if (!bServerTrigger || !CanCombat() || bReloading || Ammo <= 0 || GetWorld()->TimeSeconds - LastAimReceiveTime > .5f)
+    if (!bServerTrigger || !CanUseWeapon() || bReloading || Ammo <= 0 || GetWorld()->TimeSeconds - LastAimReceiveTime > .5f)
     {
         bServerTrigger = false;
         GetWorldTimerManager().ClearTimer(FireTimer);
@@ -386,7 +411,7 @@ void ADuelCharacter::FireOnce()
 }
 void ADuelCharacter::LocalFireFeedback()
 {
-    if (!CanCombat() || bReloading || Ammo <= 0 || !bLocalTrigger) return;
+    if (!CanUseWeapon() || bReloading || Ammo <= 0 || !bLocalTrigger) return;
     VisualShotTime=GetWorld()->TimeSeconds;
     if (FireSound) UGameplayStatics::PlaySound2D(this, FireSound, .4f);
     if (Controller) AddControllerPitchInput(-.15f);
@@ -412,7 +437,7 @@ void ADuelCharacter::Reload()
 void ADuelCharacter::ServerReload_Implementation()
 {
     const UDuelSettings* Rules = GetDefault<UDuelSettings>();
-    if (!CanCombat() || bReloading || Ammo >= Rules->MagazineCapacity) return;
+    if (!CanUseWeapon() || bReloading || Ammo >= Rules->MagazineCapacity) return;
     bServerTrigger = false;
     GetWorldTimerManager().ClearTimer(FireTimer);
     bReloading = true;
@@ -422,7 +447,7 @@ void ADuelCharacter::ServerReload_Implementation()
 }
 void ADuelCharacter::FinishReload()
 {
-    if (CanCombat() && bReloading) Ammo = GetDefault<UDuelSettings>()->MagazineCapacity;
+    if (CanUseWeapon() && bReloading) Ammo = GetDefault<UDuelSettings>()->MagazineCapacity;
     bReloading = false;
     ForceNetUpdate();
 }
@@ -476,6 +501,7 @@ void ADuelCharacter::OnRep_Health()
 }
 void ADuelCharacter::EndPlay(const EEndPlayReason::Type Reason)
 {
+    GetMesh()->UnregisterOnBoneTransformsFinalizedDelegate(WeaponPoseFinalizedHandle);
     GetWorldTimerManager().ClearAllTimersForObject(this);
     Super::EndPlay(Reason);
 }

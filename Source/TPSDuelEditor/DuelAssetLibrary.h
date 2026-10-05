@@ -9,6 +9,11 @@ class TPSDUELEDITOR_API UDuelAssetLibrary : public UBlueprintFunctionLibrary
     GENERATED_BODY()
 public:
     UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")
+    static TArray<FString> DescribeLocomotion();
+    UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")
+    static bool ConfigureQuantumLocomotion();
+
+    UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")
     static TArray<FString> RetargetQuantumLocomotion();
 
     UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")

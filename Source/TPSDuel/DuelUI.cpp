@@ -224,10 +224,11 @@ void SDuelOverlay::Construct(const FArguments& Args)
                     [SNew(SBorder).BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush")).BorderBackgroundColor(Ink).Padding(FMargin(16,10))
                         [SNew(SVerticalBox)
                             + SVerticalBox::Slot().AutoHeight()[Text(TEXT("AR-01 / AUTO"),11,Muted)]
-                            + SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(this,&SDuelOverlay::AmmoText).Font(FCoreStyle::GetDefaultFontStyle("Bold",30)).ColorAndOpacity(FLinearColor::White)]]]]
+                            + SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(this,&SDuelOverlay::AmmoText).Font_Lambda([this](){const auto* C=Owner.IsValid() ? Cast<ADuelCharacter>(Owner->GetPawn()) : nullptr;
+                                return FCoreStyle::GetDefaultFontStyle("Bold",C && C->IsReloading() ? 18 : 30);}).ColorAndOpacity(FLinearColor::White)]]]]
                 + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(FMargin(0,28))
                 [SNew(STextBlock).Visibility(this,&SDuelOverlay::GameVisibility).Text_Lambda([this](){return FText::FromString(Owner.IsValid() && Owner->WantsTouch() ?
-                    TEXT("LEFT: MOVE   /   RIGHT: LOOK") : TEXT("WASD  MOVE    RMB  AIM    R  RELOAD    SPACE  JUMP"));})
+                    TEXT("LEFT: MOVE   /   RIGHT: LOOK") : TEXT("WASD  MOVE    LMB  FIRE    RMB  AIM    R  RELOAD    SPACE  JUMP"));})
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular",11)).ColorAndOpacity(Muted)]
                 + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(FMargin(28,126))
                 [SNew(SHorizontalBox).Visibility(this,&SDuelOverlay::TouchVisibility)
@@ -318,6 +319,7 @@ FText SDuelOverlay::PhaseText() const
 {
     const ADuelGameState* State = Owner.IsValid() ? Owner->GetWorld()->GetGameState<ADuelGameState>() : nullptr;
     if (!State) return FText::FromString(TEXT("Loading match..."));
+    if (State->Phase == EDuelPhase::Waiting) return FText::FromString(TEXT("WAITING FOR OPPONENT / PRACTICE FIRE & RELOAD ENABLED"));
     if (State->Phase == EDuelPhase::Countdown) return FText::FromString(FString::Printf(TEXT("STARTING IN %d"), State->SecondsLeft()));
     if (State->Phase == EDuelPhase::Finished)
         return FText::FromString(FString::Printf(TEXT("%s WINS / %s"), State->WinnerSlot == 0 ? TEXT("BLUE") : TEXT("RED"), *State->Status));

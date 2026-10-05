@@ -130,7 +130,12 @@ void ADuelPlayerController::ApplyInputMode()
         SetInputMode(Mode);
     }
     else if (WantsTouch()) SetInputMode(FInputModeGameAndUI());
-    else SetInputMode(FInputModeGameOnly());
+    else
+    {
+        FInputModeGameOnly Mode;
+        Mode.SetConsumeCaptureMouseDown(false);
+        SetInputMode(Mode);
+    }
 }
 void ADuelPlayerController::ToggleMenu()
 {

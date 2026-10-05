@@ -18,10 +18,91 @@
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "DuelWeaponPose.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Animation/AnimInstance.h"
+#include "UObject/UnrealType.h"
+#include "DuelAnimInstance.h"
 
 void ADuelPlayerController::TickSmokeTest()
 {
 #if !UE_BUILD_SHIPPING
+    if (TickInputTest()) return;
+    // Exercise real movement and sample the resulting pose, not a teleported pose.
+    if (FParse::Param(FCommandLine::Get(),TEXT("DuelMotionTest")))
+    {
+        auto* Runner=Cast<ADuelCharacter>(GetPawn());
+        if (!Runner) return;
+        const double Now=FPlatformTime::Seconds();
+        if (SmokeStart==0)
+        {
+            SmokeStart=Now;
+            Runner->SetActorLocationAndRotation(FVector(-1350,0,90),FRotator::ZeroRotator,false,nullptr,ETeleportType::TeleportPhysics);
+            Runner->GetMesh()->VisibilityBasedAnimTickOption=EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+            SetControlRotation(FRotator::ZeroRotator);
+            auto* Camera=GetWorld()->SpawnActor<ACameraActor>();
+            Camera->GetCameraComponent()->bConstrainAspectRatio=false;
+            SetViewTarget(Camera);
+        }
+        const float Time=Now-SmokeStart;
+        auto* Camera=Cast<ACameraActor>(GetViewTarget());
+        if (Camera)
+        {
+            const FVector Focus=Runner->GetActorLocation()+FVector(0,0,10);
+            const FVector Location=Focus+FVector(70,-300,55);
+            Camera->SetActorLocationAndRotation(Location,(Focus-Location).Rotation());
+        }
+        // Forward / stop / backward / right / left / jump. Each stage uses input.
+        if (Time>2.f && Time<3.2f) Runner->MoveForward(1.f);
+        if (Time>3.8f && Time<4.8f) Runner->MoveForward(-1.f);
+        if (Time>5.4f && Time<6.4f) Runner->MoveRight(1.f);
+        if (Time>7.f && Time<8.f) Runner->MoveRight(-1.f);
+        if (Time>8.6f && Time<9.f) Runner->Jump();
+        else Runner->StopJumping();
+        Runner->SetAiming(Time>10.f && Time<11.2f);
+        if ((Time>10.f && Time<11.2f) || (Time>12.f && Time<14.f)) Runner->MoveForward(1.f);
+        if (Time>13.3f && !MotionFireRequested)
+        {
+            InputKey(EKeys::LeftMouseButton,IE_Pressed,1.f,false); MotionFireRequested=true;
+        }
+        if (Time>14.f && Time<14.2f) InputKey(EKeys::LeftMouseButton,IE_Released,0.f,false);
+        if (Time>14.4f && !MotionReloadRequested)
+        {
+            InputKey(EKeys::R,IE_Pressed,1.f,false); InputKey(EKeys::R,IE_Released,0.f,false); MotionReloadRequested=true;
+        }
+        const float Speed=Runner->GetVelocity().Size2D();
+        MotionMaximumSpeed=FMath::Max(MotionMaximumSpeed,Speed);
+        MotionJumpSeen |= Runner->GetCharacterMovement()->IsFalling() && Time>8.6f;
+        const FVector Foot=Runner->GetMesh()->GetBoneLocation(TEXT("foot_l"),EBoneSpaces::ComponentSpace);
+        if (Time>2.4f && Time<3.2f)
+        {
+            if (!MotionLastFoot.IsZero()) MotionFootTravel+=FVector::Dist(MotionLastFoot,Foot);
+            MotionLastFoot=Foot;
+        }
+        const float SampleTimes[]={2.45f,2.52f,2.59f,2.66f,2.73f,2.80f,2.87f,2.94f,3.65f,4.4f,6.f,7.6f,9.f,10.8f,12.8f,13.8f,15.2f,16.8f};
+        if (MotionSample<UE_ARRAY_COUNT(SampleTimes) && Time>=SampleTimes[MotionSample])
+        {
+            float AnimSpeed=-1.f;
+            if (auto* Instance=Runner->GetMesh()->GetAnimInstance())
+                if (auto* Property=FindFProperty<FFloatProperty>(Instance->GetClass(),TEXT("Speed"))) AnimSpeed=Property->GetPropertyValue_InContainer(Instance);
+            const auto Pose=Runner->GetVisualWeaponPose();
+            const float GripError=FVector::Dist(Runner->GetMesh()->GetBoneLocation(TEXT("hand_l"),EBoneSpaces::ComponentSpace),Pose.LeftHand);
+            const auto* Instance=Cast<UDuelAnimInstance>(Runner->GetMesh()->GetAnimInstance());
+            const FVector GunDirection=Pose.Gun.GetRotation().GetAxisY();
+            UE_LOG(LogTPSDuel,Display,TEXT("MOTION_SAMPLE frame=%d speed=%.2f animSpeed=%.2f foot=%s gripError=%.2f carry=%.3f rate=%.1f gunDirection=%s ammo=%d reload=%.2f"),MotionSample,Speed,AnimSpeed,*Foot.ToString(),GripError,Runner->GetVisualCarryAlpha(),Instance ? Instance->DuelLocomotionRate : 0.f,*GunDirection.ToString(),Runner->GetAmmo(),Runner->GetReloadProgress());
+            FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),FString::Printf(TEXT("Motion-%02d.png"),MotionSample)),true,false);
+            ++MotionSample;
+        }
+        if (Time>18.f && SmokeExitAt==0)
+        {
+            const bool Passed=MotionFootTravel>50.f && MotionMaximumSpeed>350.f && MotionJumpSeen && MotionSample==UE_ARRAY_COUNT(SampleTimes) && MotionFireRequested && MotionReloadRequested && Runner->GetAmmo()==30 && !Runner->IsReloading();
+            const FString Result=FString::Printf(TEXT("%s footTravel=%.2fcm maximumSpeed=%.2f jump=%d frames=%d"),Passed ? TEXT("PASS") : TEXT("FAIL"),MotionFootTravel,MotionMaximumSpeed,MotionJumpSeen,MotionSample);
+            FFileHelper::SaveStringToFile(Result,*FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("MotionTest.txt")));
+            UE_LOG(LogTPSDuel,Display,TEXT("MOTION_TEST %s"),*Result);
+            SmokeExitAt=Now+1;
+        }
+        if (SmokeExitAt>0 && Now>=SmokeExitAt) FPlatformMisc::RequestExit(false);
+        return;
+    }
     // Explicit screenshot mode for visual QA, inert during ordinary play.
     FString Preview;
     if(FParse::Value(FCommandLine::Get(),TEXT("DuelPreview="),Preview))
@@ -60,7 +141,7 @@ void ADuelPlayerController::TickSmokeTest()
         {
             if (auto* PreviewCharacter=Cast<ADuelCharacter>(GetPawn()))
             {
-                const auto Pose=FDuelWeaponPose::Calculate(PreviewCharacter->GetVisualAimPitch(),PreviewCharacter->GetVisualAimAlpha(),PreviewCharacter->GetReloadProgress(),0.f);
+                const auto Pose=PreviewCharacter->GetVisualWeaponPose();
                 const FVector Left=PreviewCharacter->GetMesh()->GetBoneLocation(TEXT("hand_l"),EBoneSpaces::ComponentSpace);
                 const FVector Right=PreviewCharacter->GetMesh()->GetBoneLocation(TEXT("hand_r"),EBoneSpaces::ComponentSpace);
                 UE_LOG(LogTPSDuel,Display,TEXT("VISUAL_GRIP leftError=%.2f rightError=%.2f reload=%.2f"),FVector::Dist(Left,Pose.LeftHand),FVector::Dist(Right,Pose.RightHand),PreviewCharacter->GetReloadProgress());
