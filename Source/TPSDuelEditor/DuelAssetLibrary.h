@@ -16,4 +16,13 @@ public:
 
     UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")
     static bool MakeQuantumHoldPose();
+
+    UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")
+    static bool InstallQuantumWeaponPose();
+
+    UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")
+    static TArray<FString> DescribeRifleGeometry();
+
+    UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")
+    static bool SplitQuantumRifle();
 };

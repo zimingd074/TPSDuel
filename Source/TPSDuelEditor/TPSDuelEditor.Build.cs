@@ -5,6 +5,6 @@ public class TPSDuelEditor : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine" });
-        PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "AnimationCore" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "AnimationCore", "TPSDuel", "AnimGraph", "BlueprintGraph", "RawMesh", "AssetRegistry" });
     }
 }

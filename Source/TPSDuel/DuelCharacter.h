@@ -37,6 +37,10 @@ public:
     bool IsReloading() const { return bReloading; }
     bool IsProtected() const { return bProtected; }
     bool IsAiming() const { return bAiming; }
+    float GetVisualAimPitch() const;
+    float GetVisualAimAlpha() const { return VisualAimAlpha; }
+    float GetReloadProgress() const;
+    float GetVisualRecoil() const;
 
 protected:
     UPROPERTY(VisibleAnywhere) USpringArmComponent* CameraBoom;
@@ -44,6 +48,7 @@ protected:
     UPROPERTY(VisibleAnywhere) UStaticMeshComponent* Body;
     UPROPERTY(VisibleAnywhere) UStaticMeshComponent* Head;
     UPROPERTY(VisibleAnywhere) UStaticMeshComponent* Rifle;
+    UPROPERTY(VisibleAnywhere) UStaticMeshComponent* Magazine;
     UPROPERTY(VisibleAnywhere) UStaticMeshComponent* ShieldMarker;
     UPROPERTY() UMaterialInstanceDynamic* BodyMaterial;
     UPROPERTY() UMaterialInstanceDynamic* HeadMaterial;
@@ -52,6 +57,7 @@ protected:
     UPROPERTY(ReplicatedUsing=OnRep_Health) float Health = 100.f;
     UPROPERTY(Replicated) int32 Ammo = 30;
     UPROPERTY(Replicated) bool bReloading = false;
+    UPROPERTY(Replicated) float ReloadStartedAt = -1.f;
     UPROPERTY(Replicated) bool bProtected = false;
     UPROPERTY(Replicated) bool bAiming = false;
 
@@ -80,6 +86,8 @@ private:
     float LastAimReceiveTime = -100.f;
     int32 DisplayedSlot = -2;
     bool bQuantumCharacter = false;
+    float VisualAimAlpha = 0.f;
+    float VisualShotTime = -100.f;
     FTimerHandle FireTimer;
     FTimerHandle FeedbackTimer;
     FTimerHandle ReloadTimer;

@@ -1,4 +1,5 @@
 #include "DuelCharacter.h"
+#include "DuelWeaponPose.h"
 #include "DuelGameMode.h"
 #include "DuelGameState.h"
 #include "DuelPlayerController.h"
@@ -56,15 +57,10 @@ ADuelCharacter::ADuelCharacter()
     static ConstructorHelpers::FObjectFinder<USkeletalMesh> Quantum(TEXT("/Game/ThirdParty/Quantum/SKM_Character.SKM_Character"));
     static ConstructorHelpers::FClassFinder<UAnimInstance> QuantumLocomotion(TEXT("/Game/ThirdParty/Quantum/Animations/Q_ThirdPerson_AnimBP"));
     bQuantumCharacter = Quantum.Succeeded() && QuantumLocomotion.Succeeded();
-    GetMesh()->SetSkeletalMesh(Soldier.Object);
+    GetMesh()->SetSkeletalMesh(bQuantumCharacter ? Quantum.Object : Soldier.Object);
     GetMesh()->SetRelativeLocation(FVector(0,0,-88));
     GetMesh()->SetRelativeRotation(FRotator(0,-90,0));
-    GetMesh()->SetAnimInstanceClass(Locomotion.Class);
-    if (bQuantumCharacter)
-    {
-        GetMesh()->SetSkeletalMesh(Quantum.Object);
-        GetMesh()->SetAnimInstanceClass(QuantumLocomotion.Class);
-    }
+    GetMesh()->SetAnimInstanceClass(bQuantumCharacter ? QuantumLocomotion.Class : Locomotion.Class);
     GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
     Body->SetupAttachment(GetRootComponent());
@@ -84,11 +80,19 @@ ADuelCharacter::ADuelCharacter()
     static ConstructorHelpers::FObjectFinder<UStaticMesh> QuantumRifle(TEXT("/Game/ThirdParty/Quantum/SM_Rifle.SM_Rifle"));
     if (bQuantumCharacter && QuantumRifle.Succeeded())
     {
-        Rifle->SetupAttachment(GetMesh(), TEXT("hand_r"));
+        Rifle->SetupAttachment(GetMesh());
         Rifle->SetStaticMesh(QuantumRifle.Object);
         Rifle->SetRelativeScale3D(FVector(1.f));
         Rifle->SetRelativeLocation(FVector::ZeroVector);
-        Rifle->SetAbsolute(false, true, false);
+    }
+    Magazine = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DetachableMagazine"));
+    Magazine->SetupAttachment(GetMesh());
+    Magazine->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> RifleBody(TEXT("/Game/ThirdParty/Quantum/SM_RifleBody.SM_RifleBody"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> RifleMagazine(TEXT("/Game/ThirdParty/Quantum/SM_RifleMagazine.SM_RifleMagazine"));
+    if (bQuantumCharacter && RifleBody.Succeeded() && RifleMagazine.Succeeded())
+    {
+        Rifle->SetStaticMesh(RifleBody.Object); Magazine->SetStaticMesh(RifleMagazine.Object);
     }
     ShieldMarker = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ShieldMarker"));
     ShieldMarker->SetupAttachment(GetRootComponent());
@@ -166,6 +170,7 @@ void ADuelCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     DOREPLIFETIME(ADuelCharacter, Health);
     DOREPLIFETIME(ADuelCharacter, Ammo);
     DOREPLIFETIME(ADuelCharacter, bReloading);
+    DOREPLIFETIME(ADuelCharacter, ReloadStartedAt);
     DOREPLIFETIME(ADuelCharacter, bProtected);
     DOREPLIFETIME(ADuelCharacter, bAiming);
 }
@@ -207,9 +212,18 @@ void ADuelCharacter::Tick(float DeltaSeconds)
     Head->SetVisibility(false);
     GetMesh()->SetVisibility(IsAlive());
     Rifle->SetVisibility(IsAlive(),true);
-    const float Pitch = IsLocallyControlled() ? LocalAim().Pitch : FMath::UnwindDegrees(GetBaseAimRotation().Pitch);
+    const float Pitch = GetVisualAimPitch();
+    VisualAimAlpha=FMath::FInterpTo(VisualAimAlpha,bAiming ? 1.f : 0.f,DeltaSeconds,12.f);
     if (bQuantumCharacter)
-        Rifle->SetWorldRotation(FRotator(Pitch, GetActorRotation().Yaw-90.f, 0));
+    {
+        const FDuelWeaponPose Pose=FDuelWeaponPose::Calculate(Pitch,VisualAimAlpha,GetReloadProgress(),GetVisualRecoil());
+        Rifle->SetRelativeTransform(Pose.Gun);
+        FTransform Mag=Pose.Gun;
+        // Magazine mesh vertices retain rifle coordinates; shift its well to the hand.
+        Mag.AddToTranslation(Pose.Magazine-Pose.Gun.TransformPosition(FVector(0,17,2)));
+        Magazine->SetRelativeTransform(Mag);
+        Magazine->SetVisibility(IsAlive() && Magazine->GetStaticMesh()!=nullptr);
+    }
     else
         Rifle->SetRelativeRotation(FRotator(Pitch, 0, 0));
     if (IsLocallyControlled())
@@ -223,6 +237,25 @@ void ADuelCharacter::Tick(float DeltaSeconds)
             ServerAim(LocalAim());
         }
     }
+}
+float ADuelCharacter::GetVisualAimPitch() const
+{
+    return IsLocallyControlled() ? LocalAim().Pitch : FMath::Clamp(FMath::UnwindDegrees(GetBaseAimRotation().Pitch),-80.f,80.f);
+}
+float ADuelCharacter::GetReloadProgress() const
+{
+#if !UE_BUILD_SHIPPING
+    float Preview;
+    if (FParse::Value(FCommandLine::Get(),TEXT("DuelPreviewReload="),Preview)) return FMath::Clamp(Preview,0.f,1.f);
+#endif
+    if (!bReloading || ReloadStartedAt<0.f) return -1.f;
+    const auto* State=GetWorld()->GetGameState<ADuelGameState>();
+    const float Now=State ? State->GetServerWorldTimeSeconds() : GetWorld()->TimeSeconds;
+    return FMath::Clamp((Now-ReloadStartedAt)/FMath::Max(.1f,GetDefault<UDuelSettings>()->ReloadSeconds),0.f,1.f);
+}
+float ADuelCharacter::GetVisualRecoil() const
+{
+    return FMath::Clamp(1.f-(GetWorld()->TimeSeconds-VisualShotTime)/.12f,0.f,1.f);
 }
 void ADuelCharacter::MoveForward(float Value)
 {
@@ -354,12 +387,14 @@ void ADuelCharacter::FireOnce()
 void ADuelCharacter::LocalFireFeedback()
 {
     if (!CanCombat() || bReloading || Ammo <= 0 || !bLocalTrigger) return;
+    VisualShotTime=GetWorld()->TimeSeconds;
     if (FireSound) UGameplayStatics::PlaySound2D(this, FireSound, .4f);
     if (Controller) AddControllerPitchInput(-.15f);
 }
 void ADuelCharacter::MulticastShot_Implementation(FVector_NetQuantize Start, FVector_NetQuantize End)
 {
     if (GetNetMode() == NM_DedicatedServer) return;
+    if (!IsLocallyControlled() || HasAuthority()) VisualShotTime=GetWorld()->TimeSeconds;
     if (IsLocallyControlled() && HasAuthority())
     {
         if (FireSound) UGameplayStatics::PlaySound2D(this, FireSound, .4f);
@@ -367,7 +402,8 @@ void ADuelCharacter::MulticastShot_Implementation(FVector_NetQuantize Start, FVe
     }
     if (!IsLocallyControlled() && FireSound) UGameplayStatics::PlaySoundAtLocation(this, FireSound, Start, .4f);
     ADuelTracer* Tracer = GetWorld()->SpawnActor<ADuelTracer>();
-    if (Tracer) Tracer->SetBeam(Start, End);
+    const FVector VisualMuzzle=bQuantumCharacter ? Rifle->GetComponentTransform().TransformPosition(FVector(0,56,14)) : FVector(Start);
+    if (Tracer) Tracer->SetBeam(VisualMuzzle, End);
 }
 void ADuelCharacter::Reload()
 {
@@ -380,6 +416,7 @@ void ADuelCharacter::ServerReload_Implementation()
     bServerTrigger = false;
     GetWorldTimerManager().ClearTimer(FireTimer);
     bReloading = true;
+    ReloadStartedAt=GetWorld()->TimeSeconds;
     GetWorldTimerManager().SetTimer(ReloadTimer, this, &ADuelCharacter::FinishReload, FMath::Max(.1f, Rules->ReloadSeconds), false);
     ForceNetUpdate();
 }

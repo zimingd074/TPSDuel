@@ -7,8 +7,128 @@
 #include "EditorAnimUtils.h"
 #include "Modules/ModuleManager.h"
 #include "TwoBoneIK.h"
+#include "AnimGraphNode_DuelWeaponPose.h"
+#include "AnimGraphNode_LocalToComponentSpace.h"
+#include "AnimGraphNode_ComponentToLocalSpace.h"
+#include "AnimGraphNode_Root.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "Engine/StaticMesh.h"
+#include "RawMesh.h"
+#include "AssetRegistryModule.h"
 
 IMPLEMENT_MODULE(FDefaultModuleImpl, TPSDuelEditor)
+
+bool UDuelAssetLibrary::SplitQuantumRifle()
+{
+    auto* Source=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/ThirdParty/Quantum/SM_Rifle.SM_Rifle"));
+    if (!Source) return false;
+    FRawMesh Raw; Source->GetSourceModel(0).LoadRawMesh(Raw);
+    FRawMesh Parts[2];
+    for (auto& Part : Parts) Part.VertexPositions=Raw.VertexPositions;
+    for (int32 Face=0; Face<Raw.WedgeIndices.Num()/3; ++Face)
+    {
+        FVector Center=FVector::ZeroVector;
+        for (int32 Corner=0; Corner<3; ++Corner) Center+=Raw.VertexPositions[Raw.WedgeIndices[Face*3+Corner]]/3.f;
+        // The sample's curved magazine is the isolated region below the receiver.
+        // Preserve the original asset and every triangle, UV and tangent.
+        const int32 PartIndex=Center.Y>10.f && Center.Y<25.f && Center.Z<7.2f ? 1 : 0;
+        auto& Part=Parts[PartIndex];
+        Part.FaceMaterialIndices.Add(Raw.FaceMaterialIndices[Face]);
+        Part.FaceSmoothingMasks.Add(Raw.FaceSmoothingMasks.IsValidIndex(Face) ? Raw.FaceSmoothingMasks[Face] : 0);
+        for (int32 Corner=0; Corner<3; ++Corner)
+        {
+            const int32 Wedge=Face*3+Corner;
+            Part.WedgeIndices.Add(Raw.WedgeIndices[Wedge]);
+            if (Raw.WedgeTangentX.IsValidIndex(Wedge)) Part.WedgeTangentX.Add(Raw.WedgeTangentX[Wedge]);
+            if (Raw.WedgeTangentY.IsValidIndex(Wedge)) Part.WedgeTangentY.Add(Raw.WedgeTangentY[Wedge]);
+            if (Raw.WedgeTangentZ.IsValidIndex(Wedge)) Part.WedgeTangentZ.Add(Raw.WedgeTangentZ[Wedge]);
+            if (Raw.WedgeColors.IsValidIndex(Wedge)) Part.WedgeColors.Add(Raw.WedgeColors[Wedge]);
+            for (int32 UV=0; UV<MAX_MESH_TEXTURE_COORDS; ++UV)
+                if (Raw.WedgeTexCoords[UV].IsValidIndex(Wedge)) Part.WedgeTexCoords[UV].Add(Raw.WedgeTexCoords[UV][Wedge]);
+        }
+    }
+    if (Parts[1].WedgeIndices.Num()<100 || Parts[1].WedgeIndices.Num()>Raw.WedgeIndices.Num()/2) return false;
+    for (int32 Index=0; Index<2; ++Index)
+    {
+        const FString Name=Index==0 ? TEXT("SM_RifleBody") : TEXT("SM_RifleMagazine");
+        const FString Path=TEXT("/Game/ThirdParty/Quantum/")+Name;
+        auto* Package=CreatePackage(*Path);
+        auto* Mesh=FindObject<UStaticMesh>(Package,*Name);
+        if (!Mesh)
+        {
+            Mesh=NewObject<UStaticMesh>(Package,*Name,RF_Public|RF_Standalone);
+            Mesh->InitResources(); Mesh->SetLightingGuid(); Mesh->AddSourceModel();
+            FAssetRegistryModule::AssetCreated(Mesh);
+        }
+        Mesh->GetStaticMaterials()=Source->GetStaticMaterials();
+        auto& Model=Mesh->GetSourceModel(0);
+        Model.BuildSettings.bRecomputeNormals=false; Model.BuildSettings.bRecomputeTangents=false;
+        Model.BuildSettings.bGenerateLightmapUVs=false; Model.SaveRawMesh(Parts[Index]);
+        Mesh->Build(false); Mesh->PostEditChange(); Mesh->MarkPackageDirty();
+    }
+    return true;
+}
+
+TArray<FString> UDuelAssetLibrary::DescribeRifleGeometry()
+{
+    TArray<FString> Result;
+    auto* Mesh=LoadObject<UStaticMesh>(nullptr,TEXT("/Game/ThirdParty/Quantum/SM_Rifle.SM_Rifle"));
+    if (!Mesh) return Result;
+    FRawMesh Raw; Mesh->GetSourceModel(0).LoadRawMesh(Raw);
+    for (int32 Y=-30; Y<60; Y+=3)
+    {
+        FBox Bounds(ForceInit);
+        for (const FVector& Vertex : Raw.VertexPositions)
+            if (Vertex.Y>=Y && Vertex.Y<Y+3) Bounds+=Vertex;
+        if (Bounds.IsValid) Result.Add(FString::Printf(TEXT("Y=%d..%d X=%f..%f Z=%f..%f"),Y,Y+3,Bounds.Min.X,Bounds.Max.X,Bounds.Min.Z,Bounds.Max.Z));
+    }
+    return Result;
+}
+
+bool UDuelAssetLibrary::InstallQuantumWeaponPose()
+{
+    auto* Blueprint=LoadObject<UAnimBlueprint>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Q_ThirdPerson_AnimBP.Q_ThirdPerson_AnimBP"));
+    if (!Blueprint) return false;
+    for (UEdGraph* Graph : Blueprint->FunctionGraphs)
+    {
+        UAnimGraphNode_Root* Root=nullptr;
+        for (UEdGraphNode* Node : Graph->Nodes)
+        {
+            if (Cast<UAnimGraphNode_DuelWeaponPose>(Node))
+            {
+                FKismetEditorUtilities::CompileBlueprint(Blueprint);
+                Blueprint->MarkPackageDirty();
+                return Blueprint->Status!=BS_Error;
+            }
+            if (auto* Candidate=Cast<UAnimGraphNode_Root>(Node)) Root=Candidate;
+        }
+        if (!Root) continue;
+        UEdGraphPin* Input=Root->FindPin(TEXT("Result"));
+        if (!Input || Input->LinkedTo.Num()!=1) return false;
+        UEdGraphPin* Source=Input->LinkedTo[0];
+        auto AddNode=[Graph](UEdGraphNode* Node, int32 X)
+        {
+            Graph->AddNode(Node,false,false); Node->CreateNewGuid(); Node->PostPlacedNewNode();
+            Node->AllocateDefaultPins(); Node->NodePosX=X; Node->NodePosY=200;
+        };
+        Blueprint->Modify(); Graph->Modify();
+        auto* ToComponent=NewObject<UAnimGraphNode_LocalToComponentSpace>(Graph);
+        auto* Weapon=NewObject<UAnimGraphNode_DuelWeaponPose>(Graph);
+        auto* ToLocal=NewObject<UAnimGraphNode_ComponentToLocalSpace>(Graph);
+        AddNode(ToComponent,Root->NodePosX-600); AddNode(Weapon,Root->NodePosX-400); AddNode(ToLocal,Root->NodePosX-200);
+        Input->BreakAllPinLinks();
+        Source->MakeLinkTo(ToComponent->FindPinChecked(TEXT("LocalPose")));
+        ToComponent->FindPinChecked(TEXT("ComponentPose"))->MakeLinkTo(Weapon->FindPinChecked(TEXT("ComponentPose")));
+        Weapon->FindPinChecked(TEXT("Pose"))->MakeLinkTo(ToLocal->FindPinChecked(TEXT("ComponentPose")));
+        ToLocal->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Input);
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+        FKismetEditorUtilities::CompileBlueprint(Blueprint);
+        Blueprint->MarkPackageDirty();
+        return Blueprint->Status!=BS_Error;
+    }
+    return false;
+}
 
 TArray<FString> UDuelAssetLibrary::DescribeQuantumBones()
 {

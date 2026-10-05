@@ -136,5 +136,10 @@ if os.path.isfile(os.path.join(quantum_source, "FBX", "SKM_Character.fbx")):
     runpy.run_path(os.path.join(project, "tools", "ImportQuantumAssets.py"))
     if os.path.isfile(os.path.join(quantum_source, "RecoveredTextures.json")):
         runpy.run_path(os.path.join(project, "tools", "PrepareQuantumAssets.py"))
+        runpy.run_path(os.path.join(project, "tools", "PrepareCombatAssets.py"))
+
+if os.path.isfile(os.path.join(project, "Assets", "Source", "PolyHaven", "modular_factory_facade", "manifest.json")):
+    import runpy
+    runpy.run_path(os.path.join(project, "tools", "ImportWarehouseAssets.py"))
 
 unreal.log("TPSDuel: maps, warehouse materials and acquired character assets initialized.")

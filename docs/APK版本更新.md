@@ -21,9 +21,9 @@ Set-Location D:\TPSDuel
 | --- | --- | --- |
 | 包名 | `com.tpsduel.prototype` | 保持一致 |
 | 签名 | Android Debug 测试证书 | 同一条测试更新链保持同一密钥 |
-| StoreVersion / versionCode | 4 | 下一次改为 5，再下一次改为 6 |
-| VersionDisplayName / versionName | 0.3.1 | 改为用户可见的新版本，例如 0.4.0 |
-| ProjectVersion | 0.3.1 | 与 Windows 和 Android 发布版本一起更新 |
+| StoreVersion / versionCode | 5 | 下一次改为 6，再下一次改为 7 |
+| VersionDisplayName / versionName | 0.4.0 | 改为用户可见的新版本，例如 0.4.1 |
+| ProjectVersion | 0.4.0 | 与 Windows 和 Android 发布版本一起更新 |
 
 Android 版本配置位于 `Config/DefaultEngine.ini` 的 AndroidRuntimeSettings 段；工程版本位于 `Config/DefaultGame.ini`。旧测试 APK 实际显示 versionCode=1、versionName=1.0，已归档在 `Builds/Releases/0.1.0/Android`，不是新 APK。
 

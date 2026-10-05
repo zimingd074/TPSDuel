@@ -37,6 +37,12 @@ function Initialize-Assets {
     if (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\Fab\Quantum\RecoveredTextures.json')) {
         $taskQuantum = Get-Content -LiteralPath (Join-Path $taskProjectRoot 'Saved\QuantumPreparation.json') -Raw | ConvertFrom-Json
         if ($taskQuantum.state -ne 'prepared') { throw 'Quantum character preparation failed; inspect Saved/Logs/TPSDuel.log.' }
+        $taskCombat = Get-Content -LiteralPath (Join-Path $taskProjectRoot 'Saved\CombatAssets.json') -Raw | ConvertFrom-Json
+        if ($taskCombat.state -ne 'prepared') { throw 'Combat animation initialization failed.' }
+    }
+    if (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\PolyHaven\modular_factory_facade\manifest.json')) {
+        $taskWarehouse = Get-Content -LiteralPath (Join-Path $taskProjectRoot 'Saved\WarehouseImport.json') -Raw | ConvertFrom-Json
+        if ($taskWarehouse.state -ne 'complete' -or $taskWarehouse.assets.Count -ne 4) { throw 'Warehouse initialization failed.' }
     }
 }
 switch ($Action) {
@@ -82,7 +88,7 @@ switch ($Action) {
                 $taskData = @($taskZip.Entries | Where-Object { $_.FullName -match '^assets/.*\.(obb(\.png)?|pak)$' -and $_.Length -gt 0 })
                 if ($taskData.Count -lt 1) { throw 'APK is missing embedded game data. Check the UAT package step and bPackageDataInsideApk.' }
             } finally { $taskZip.Dispose() }
-            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.3.0\Android\TPSDuel-arm64.apk'
+            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.3.1\Android\TPSDuel-arm64.apk'
             if(Test-Path -LiteralPath $taskPreviousAPK){
                 & (Join-Path $PSScriptRoot 'CheckAndroidUpdate.ps1') -PreviousAPK $taskPreviousAPK -NewAPK $taskAPK.FullName -AndroidSDKRoot $AndroidSDKRoot -JavaRoot $JavaRoot
             }

@@ -1,0 +1,33 @@
+{
+  "asset": "yellow_plaster_02",
+  "source": "https://polyhaven.com/a/yellow_plaster_02",
+  "license": "CC0",
+  "licenseUrl": "https://polyhaven.com/license",
+  "resolution": "1k",
+  "files": [
+    {
+      "map": "Diffuse",
+      "file": "yellow_plaster_02_diff_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/yellow_plaster_02/yellow_plaster_02_diff_1k.jpg",
+      "md5": "633b0c9fb1c6511fb20444278c9a4666",
+      "sha256": "B8BA1C2A8D73C610371E6FF66E9E2C2385B85FEE4073FFFB3FD6FFE254E9A370",
+      "bytes": 647343
+    },
+    {
+      "map": "nor_dx",
+      "file": "yellow_plaster_02_nor_dx_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/yellow_plaster_02/yellow_plaster_02_nor_dx_1k.jpg",
+      "md5": "6fa1cc3fb7442ff796eb1e15553f5055",
+      "sha256": "4017E10B4A508D143C02844C6129ED9CF86EFF3530FF0200C000B9C9C7EAE5CB",
+      "bytes": 1136705
+    },
+    {
+      "map": "arm",
+      "file": "yellow_plaster_02_arm_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/yellow_plaster_02/yellow_plaster_02_arm_1k.jpg",
+      "md5": "ca9f2fbf2af3fca6533e27a9848bd56d",
+      "sha256": "8624B3848F569924D6E21DDB0962F5C9912AD6AEF0CBD4F50E1F19FDAC5C64F7",
+      "bytes": 729700
+    }
+  ]
+}

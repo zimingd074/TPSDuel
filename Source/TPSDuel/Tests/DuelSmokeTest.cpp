@@ -14,6 +14,10 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "DuelWeaponPose.h"
 
 void ADuelPlayerController::TickSmokeTest()
 {
@@ -23,13 +27,44 @@ void ADuelPlayerController::TickSmokeTest()
     if(FParse::Value(FCommandLine::Get(),TEXT("DuelPreview="),Preview))
     {
         const double PreviewNow=FPlatformTime::Seconds();
-        if(SmokeStart==0) SmokeStart=PreviewNow;
+        if(SmokeStart==0)
+        {
+            SmokeStart=PreviewNow;
+            if (GetPawn()) GetPawn()->SetActorLocationAndRotation(FVector(-700,-50,90),FRotator::ZeroRotator,false,nullptr,ETeleportType::TeleportPhysics);
+        }
+        if (auto* PreviewCharacter=Cast<ADuelCharacter>(GetPawn()))
+        {
+            if (FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewAim"))) PreviewCharacter->SetAiming(true);
+            float Pitch=0.f;
+            const bool HasPitch=FParse::Value(FCommandLine::Get(),TEXT("DuelPreviewPitch="),Pitch);
+            if (HasPitch || FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewSide")))
+            {
+                SetControlRotation(FRotator(Pitch,0,0));
+                PreviewCharacter->SetActorRotation(FRotator::ZeroRotator);
+            }
+        }
+        if (!SmokePreviewCamera && GetPawn() && FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewSide")))
+        {
+            auto* Camera=GetWorld()->SpawnActor<ACameraActor>();
+            Camera->GetCameraComponent()->bConstrainAspectRatio=false;
+            const FVector Focus=GetPawn()->GetActorLocation()+FVector(0,0,35);
+            const FVector Location=Focus+GetPawn()->GetActorForwardVector()*170.f+GetPawn()->GetActorRightVector()*220.f+FVector(0,0,40);
+            Camera->SetActorLocationAndRotation(Location,(Focus-Location).Rotation());
+            SetViewTarget(Camera); SmokePreviewCamera=true;
+        }
         if(SmokeExitAt>0)
         {
             if(PreviewNow>=SmokeExitAt) FPlatformMisc::RequestExit(false);
         }
         else if(PreviewNow-SmokeStart>8)
         {
+            if (auto* PreviewCharacter=Cast<ADuelCharacter>(GetPawn()))
+            {
+                const auto Pose=FDuelWeaponPose::Calculate(PreviewCharacter->GetVisualAimPitch(),PreviewCharacter->GetVisualAimAlpha(),PreviewCharacter->GetReloadProgress(),0.f);
+                const FVector Left=PreviewCharacter->GetMesh()->GetBoneLocation(TEXT("hand_l"),EBoneSpaces::ComponentSpace);
+                const FVector Right=PreviewCharacter->GetMesh()->GetBoneLocation(TEXT("hand_r"),EBoneSpaces::ComponentSpace);
+                UE_LOG(LogTPSDuel,Display,TEXT("VISUAL_GRIP leftError=%.2f rightError=%.2f reload=%.2f"),FVector::Dist(Left,Pose.LeftHand),FVector::Dist(Right,Pose.RightHand),PreviewCharacter->GetReloadProgress());
+            }
             FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),Preview+TEXT(".png")),true,false);
             SmokeExitAt=PreviewNow+2;
         }
@@ -69,6 +104,16 @@ void ADuelPlayerController::TickSmokeTest()
             if (!GI->ConnectionStatus.IsEmpty()) Report(false, GI->ConnectionStatus);
         return;
     }
+    for (TActorIterator<ADuelCharacter> It(GetWorld()); It; ++It)
+        if (It->IsReloading())
+        {
+            const float Progress=It->GetReloadProgress();
+            if (Progress>=0.f && Progress<=1.f && !SmokeReloadSeen)
+            {
+                SmokeReloadSeen=true;
+                UE_LOG(LogTPSDuel,Display,TEXT("RELOAD_SYNC role=%s progress=%.3f"),*TestRole,Progress);
+            }
+        }
     int32 Blue = 0, Red = 0;
     for (const APlayerState* MatchPlayer : State->PlayerArray)
         if (const ADuelPlayerState* PS = Cast<ADuelPlayerState>(MatchPlayer))
@@ -78,7 +123,7 @@ void ADuelPlayerController::TickSmokeTest()
     {
         FireReleased();
         if (Now - SmokeFinishSeen >= 1)
-            Report(State->Phase == EDuelPhase::Finished && State->WinnerSlot == 0 && Blue == 3 && Red == 1,
+            Report(State->Phase == EDuelPhase::Finished && State->WinnerSlot == 0 && Blue == 3 && Red == 1 && SmokeReloadSeen,
                 FString::Printf(TEXT("BLUE=%d RED=%d WINNER=%d"), Blue, Red, State->WinnerSlot));
         return;
     }
@@ -107,6 +152,12 @@ void ADuelPlayerController::TickSmokeTest()
     }
     const int32 Shooter = Blue == 0 || Red >= 1 ? 0 : 1;
     if (!Self || !MyState || !Self->IsAlive() || MyState->Slot != Shooter) { FireReleased(); return; }
+    if (!SmokeReloadRequested && MyState->Slot==0 && Self->GetAmmo()<30 && Blue==0 && Red==0)
+    {
+        FireReleased(); ReloadPressed(); SmokeReloadRequested=true;
+        return;
+    }
+    if (Self->IsReloading()) { FireReleased(); return; }
     ADuelCharacter* Target = nullptr;
     for (TActorIterator<ADuelCharacter> It(GetWorld()); It; ++It)
     {

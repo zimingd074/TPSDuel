@@ -54,5 +54,8 @@ private:
     double SmokeStart = 0;
     double SmokeFinishSeen = 0;
     double SmokeExitAt = 0;
+    bool SmokeReloadRequested = false;
+    bool SmokeReloadSeen = false;
+    bool SmokePreviewCamera = false;
     TWeakObjectPtr<ADuelCharacter> SmokePawns[2];
 };
