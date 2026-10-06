@@ -1,0 +1,32 @@
+{
+  "asset": "rusty_metal_04",
+  "source": "https://polyhaven.com/a/rusty_metal_04",
+  "license": "CC0",
+  "licenseUrl": "https://polyhaven.com/license",
+  "files": [
+    {
+      "map": "Diffuse",
+      "file": "rusty_metal_04_diff_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rusty_metal_04/rusty_metal_04_diff_1k.jpg",
+      "md5": "91832efd8e5896387e2af18a5b49b895",
+      "sha256": "37C6757C5B6B2229F61423C7E5013F970E4DAFB48070D35F53ED6D08958ED288",
+      "bytes": 938338
+    },
+    {
+      "map": "nor_dx",
+      "file": "rusty_metal_04_nor_dx_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rusty_metal_04/rusty_metal_04_nor_dx_1k.jpg",
+      "md5": "41e65aa4701e0649461b076e9915a74b",
+      "sha256": "F6DB58C8394F4C4541F0812F1535D3B956E87CB64A98ED7A0FD5060080C970A8",
+      "bytes": 894921
+    },
+    {
+      "map": "arm",
+      "file": "rusty_metal_04_arm_1k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rusty_metal_04/rusty_metal_04_arm_1k.jpg",
+      "md5": "279a6d62861e32e4ee43cce84b932e43",
+      "sha256": "B040E35ED5E885D04B465761782A5D0EBD241175F562821F8FBA35A12DCCB789",
+      "bytes": 787679
+    }
+  ]
+}

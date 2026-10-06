@@ -1,0 +1,16 @@
+{
+  "asset": "industrial_sunset_02",
+  "source": "https://polyhaven.com/a/industrial_sunset_02",
+  "license": "CC0",
+  "licenseUrl": "https://polyhaven.com/license",
+  "files": [
+    {
+      "map": "hdri",
+      "file": "industrial_sunset_02_2k.hdr",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/industrial_sunset_02_2k.hdr",
+      "md5": "d764f93706cd34aaa96b8b6d3dda920b",
+      "sha256": "79932A707CD0269E289638B181CDCAA13071556E0EC30CEADBF070DA8BB457F8",
+      "bytes": 6434769
+    }
+  ]
+}

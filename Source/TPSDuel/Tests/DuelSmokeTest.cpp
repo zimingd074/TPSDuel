@@ -22,6 +22,7 @@
 #include "Animation/AnimInstance.h"
 #include "UObject/UnrealType.h"
 #include "DuelAnimInstance.h"
+#include "Misc/App.h"
 
 void ADuelPlayerController::TickSmokeTest()
 {
@@ -36,6 +37,10 @@ void ADuelPlayerController::TickSmokeTest()
         if (SmokeStart==0)
         {
             SmokeStart=Now;
+            // Screenshot readback may stall rendering. Advance the test by
+            // simulation frames so captures cannot skip into another action.
+            FApp::SetFixedDeltaTime(1.0/60.0); FApp::SetUseFixedTimeStep(true);
+            SmokeStart=GetWorld()->TimeSeconds;
             Runner->SetActorLocationAndRotation(FVector(-1350,0,90),FRotator::ZeroRotator,false,nullptr,ETeleportType::TeleportPhysics);
             Runner->GetMesh()->VisibilityBasedAnimTickOption=EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
             SetControlRotation(FRotator::ZeroRotator);
@@ -43,7 +48,7 @@ void ADuelPlayerController::TickSmokeTest()
             Camera->GetCameraComponent()->bConstrainAspectRatio=false;
             SetViewTarget(Camera);
         }
-        const float Time=Now-SmokeStart;
+        const float Time=GetWorld()->TimeSeconds-SmokeStart;
         auto* Camera=Cast<ACameraActor>(GetViewTarget());
         if (Camera)
         {
@@ -89,6 +94,7 @@ void ADuelPlayerController::TickSmokeTest()
             const auto* Instance=Cast<UDuelAnimInstance>(Runner->GetMesh()->GetAnimInstance());
             const FVector GunDirection=Pose.Gun.GetRotation().GetAxisY();
             UE_LOG(LogTPSDuel,Display,TEXT("MOTION_SAMPLE frame=%d speed=%.2f animSpeed=%.2f foot=%s gripError=%.2f carry=%.3f rate=%.1f gunDirection=%s ammo=%d reload=%.2f"),MotionSample,Speed,AnimSpeed,*Foot.ToString(),GripError,Runner->GetVisualCarryAlpha(),Instance ? Instance->DuelLocomotionRate : 0.f,*GunDirection.ToString(),Runner->GetAmmo(),Runner->GetReloadProgress());
+            UE_LOG(LogTPSDuel,Display,TEXT("COMBAT_SAMPLE frame=%d dedicated=%d direction=%.1f action=%s"),MotionSample,Instance && Instance->bDedicatedLocomotion,Instance ? Instance->DuelDirection : 0.f,Instance ? *GetNameSafe(Instance->GetCurrentActiveMontage()) : TEXT("None"));
             FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),FString::Printf(TEXT("Motion-%02d.png"),MotionSample)),true,false);
             ++MotionSample;
         }

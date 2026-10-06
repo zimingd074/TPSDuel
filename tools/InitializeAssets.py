@@ -134,7 +134,7 @@ quantum_source = os.path.join(project, "Assets", "Source", "Fab", "Quantum")
 if os.path.isfile(os.path.join(quantum_source, "FBX", "SKM_Character.fbx")):
     import runpy
     runpy.run_path(os.path.join(project, "tools", "ImportQuantumAssets.py"))
-    if os.path.isfile(os.path.join(quantum_source, "RecoveredTextures.json")):
+    if any(os.path.isfile(os.path.join(quantum_source, name)) for name in ("RecoveredTextures.json", "FullTextures.json")):
         runpy.run_path(os.path.join(project, "tools", "PrepareQuantumAssets.py"))
         runpy.run_path(os.path.join(project, "tools", "PrepareCombatAssets.py"))
 
@@ -142,4 +142,10 @@ if os.path.isfile(os.path.join(project, "Assets", "Source", "PolyHaven", "modula
     import runpy
     runpy.run_path(os.path.join(project, "tools", "ImportWarehouseAssets.py"))
 
+if os.path.isfile(os.path.join(project, "Assets", "Source", "PolyHaven", "industrial_sunset_02", "manifest.json")):
+    import runpy
+    runpy.run_path(os.path.join(project, "tools", "ImportRealismAssets.py"))
+if os.path.isfile(os.path.join(project, "Assets", "Source", "Fab", "FactoryEnvironmentCollect", "TPSDuelMigration.json")):
+    import runpy
+    runpy.run_path(os.path.join(project, "tools", "ImportFactoryAssets.py"))
 unreal.log("TPSDuel: maps, warehouse materials and acquired character assets initialized.")

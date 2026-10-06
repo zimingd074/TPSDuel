@@ -7,14 +7,14 @@ from datetime import datetime
 import re
 from PIL import Image
 
-folder = Path(__file__).resolve().parents[1] / "docs/screenshots/locomotion-v0.4.2"
+folder = Path(__file__).resolve().parents[1] / "docs/screenshots/locomotion-v0.5.0"
 frames = []
 for index in range(8):
     with Image.open(folder / f"Motion-{index:02d}.png") as source:
         frames.append(source.convert("RGB").resize((960, 443), Image.Resampling.LANCZOS))
 palette = frames[0].quantize(colors=256)
 output = [palette] + [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames[1:]]
-log = folder.parents[2] / "Saved/locomotion-v042.log"
+log = folder.parents[2] / "Saved/locomotion-v050.log"
 times = {}
 for line in log.read_text(encoding="utf-8-sig").splitlines():
     match = re.search(r"^\[([\d.\-:]+)\].*MOTION_SAMPLE frame=(\d+)", line)

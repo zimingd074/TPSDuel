@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskRuntime=Join-Path $taskRoot 'Builds\Windows\WindowsNoEditor\TPSDuel'
 $taskExe=Join-Path $taskRuntime 'Binaries\Win64\TPSDuel.exe'
-$taskLog=Join-Path $taskRoot 'Saved\locomotion-v042.log'
+$taskLog=Join-Path $taskRoot 'Saved\locomotion-v050.log'
 $taskResult=Join-Path $taskRuntime 'Saved\MotionTest.txt'
 if(-not(Test-Path -LiteralPath $taskExe)){throw 'Package Windows first.'}
 if(Test-Path -LiteralPath $taskResult){Remove-Item -LiteralPath $taskResult}
@@ -35,13 +35,23 @@ try {
         $taskAmmo=[int]$Matches[3]
         $taskReload=[double]::Parse($Matches[4],[Globalization.CultureInfo]::InvariantCulture)
         if($taskIndex -eq 0 -and $taskCarry -lt .9){throw 'Running rifle did not reach chest carry.'}
-        if($taskIndex -eq 9 -and $taskRate -ne -1){throw 'Backward foot cycle was not reversed.'}
+        if($taskIndex -eq 9 -and $taskRate -ne 1){throw 'Dedicated backward clip must play forward.'}
         if($taskIndex -eq 13 -and ($taskCarry -gt .05 -or $taskSpeed -gt 125)){throw 'Aiming did not raise rifle and slow movement.'}
         if($taskIndex -eq 15 -and ($taskCarry -gt .05 -or $taskAmmo -ge 30)){throw 'Running fire did not raise rifle or consume ammo.'}
         if($taskIndex -eq 16 -and ($taskCarry -gt .05 -or $taskReload -lt 0)){throw 'Reload did not leave carry stance.'}
     }
+    $taskCombatSamples=@(Select-String -LiteralPath $taskLog -Pattern 'COMBAT_SAMPLE')
+    if($taskCombatSamples.Count -ne 18){throw 'Missing combat animation evidence.'}
+    foreach($taskSample in $taskCombatSamples){
+        if($taskSample.Line -notmatch 'frame=(\d+) dedicated=1 direction=([-\d.]+) action=(.*)$'){throw 'Dedicated animation graph was not active.'}
+        $taskIndex=[int]$Matches[1]; $taskDirection=[double]::Parse($Matches[2],[Globalization.CultureInfo]::InvariantCulture); $taskAction=$Matches[3]
+        if($taskIndex -eq 9 -and [Math]::Abs($taskDirection) -lt 170){throw 'Backward sample did not select backward direction.'}
+        if($taskIndex -eq 10 -and [Math]::Abs($taskDirection-90) -gt 10){throw 'Right strafe direction incorrect.'}
+        if($taskIndex -eq 11 -and [Math]::Abs($taskDirection+90) -gt 10){throw 'Left strafe direction incorrect.'}
+        if($taskIndex -in @(15,16) -and $taskAction -eq 'None'){throw 'Fire/reload animation was not active.'}
+    }
     if(-not $NullRHI){
-        $taskOutput=Join-Path $taskRoot 'docs\screenshots\locomotion-v0.4.2'
+        $taskOutput=Join-Path $taskRoot 'docs\screenshots\locomotion-v0.5.0'
         New-Item -ItemType Directory -Path $taskOutput -Force | Out-Null
         foreach($taskIndex in 0..17){
             $taskName='Motion-{0:00}.png' -f $taskIndex

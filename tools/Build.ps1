@@ -34,7 +34,7 @@ function Initialize-Assets {
     foreach ($taskAsset in @('Content\Maps\L_Menu.umap','Content\Maps\L_Arena.umap','Content\Materials\M_DuelColor.uasset','Content\Materials\M_Concrete.uasset','Content\Materials\M_Brick.uasset','Content\Materials\M_Wood.uasset','Content\Materials\M_Metal.uasset','Content\Materials\M_Paint.uasset','Content\Materials\M_Sky.uasset','Content\Mannequin\Character\Mesh\SK_Mannequin.uasset','Content\Audio\S_Fire.uasset')) {
         if (-not (Test-Path -LiteralPath (Join-Path $taskProjectRoot $taskAsset))) { throw "Asset initialization incomplete: $taskAsset" }
     }
-    if (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\Fab\Quantum\RecoveredTextures.json')) {
+    if ((Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\Fab\Quantum\RecoveredTextures.json')) -or (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\Fab\Quantum\FullTextures.json'))) {
         $taskQuantum = Get-Content -LiteralPath (Join-Path $taskProjectRoot 'Saved\QuantumPreparation.json') -Raw | ConvertFrom-Json
         if ($taskQuantum.state -ne 'prepared') { throw 'Quantum character preparation failed; inspect Saved/Logs/TPSDuel.log.' }
         $taskCombat = Get-Content -LiteralPath (Join-Path $taskProjectRoot 'Saved\CombatAssets.json') -Raw | ConvertFrom-Json
@@ -43,6 +43,14 @@ function Initialize-Assets {
     if (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\PolyHaven\modular_factory_facade\manifest.json')) {
         $taskWarehouse = Get-Content -LiteralPath (Join-Path $taskProjectRoot 'Saved\WarehouseImport.json') -Raw | ConvertFrom-Json
         if ($taskWarehouse.state -ne 'complete' -or $taskWarehouse.assets.Count -ne 4) { throw 'Warehouse initialization failed.' }
+    }
+    if (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\PolyHaven\industrial_sunset_02\manifest.json')) {
+        $taskRealism=Get-Content (Join-Path $taskProjectRoot 'Saved\RealismImport.json') -Raw | ConvertFrom-Json
+        if($taskRealism.state -ne 'complete'){throw 'Realism material initialization failed.'}
+    }
+    if (Test-Path -LiteralPath (Join-Path $taskProjectRoot 'Assets\Source\Fab\FactoryEnvironmentCollect\TPSDuelMigration.json')) {
+        $taskFactory=Get-Content (Join-Path $taskProjectRoot 'Saved\FactoryImport.json') -Raw | ConvertFrom-Json
+        if($taskFactory.state -ne 'prepared' -or @($taskFactory.meshes.psobject.Properties).Count -ne 8){throw 'Factory mesh initialization failed.'}
     }
 }
 switch ($Action) {
@@ -77,8 +85,23 @@ switch ($Action) {
             $env:JAVA_HOME = $JavaRoot
             $taskArguments += '-cookflavor=ETC2'
         }
+        $taskCookStart=[DateTime]::UtcNow
         & $taskUAT @taskArguments
         if ($LASTEXITCODE -ne 0) { throw "Packaging failed ($LASTEXITCODE). Preserve logs before changing the toolchain." }
+        $taskEngineLogName=$EngineRoot.Replace(':','').Replace('\','+').Replace('/','+').Replace(' ','+')
+        $taskCookRoots=@((Join-Path $EngineRoot 'Engine\Programs\AutomationTool\Saved'),(Join-Path ([Environment]::GetFolderPath('ApplicationData')) ('Unreal Engine\AutomationTool\Logs\'+$taskEngineLogName)))
+        $taskCookLogs=@(foreach($taskCookRoot in $taskCookRoots){if(Test-Path -LiteralPath $taskCookRoot){Get-ChildItem -LiteralPath $taskCookRoot -Filter 'Cook-*.txt'}})
+        $taskCookLog=$taskCookLogs | Where-Object {$_.LastWriteTimeUtc -ge $taskCookStart} | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+        if(-not $taskCookLog){
+            $taskUATLog=Join-Path $taskCookRoots[1] 'Log.txt'
+            if(Test-Path -LiteralPath $taskUATLog){
+                $taskCandidate=Get-Item -LiteralPath $taskUATLog
+                if($taskCandidate.LastWriteTimeUtc -ge $taskCookStart -and (Select-String -LiteralPath $taskUATLog -Pattern 'COOK COMMAND COMPLETED' -Quiet)){$taskCookLog=$taskCandidate}
+            }
+        }
+        if(-not $taskCookLog){throw 'Missing current cook log; cannot verify materials.'}
+        Copy-Item -LiteralPath $taskCookLog.FullName -Destination (Join-Path $taskProjectRoot ('Saved\cook-'+$taskPlatform+'-v050.log')) -Force
+        if(Select-String -LiteralPath $taskCookLog.FullName -Pattern 'Failed to compile Material|Cooking a material resource .*doesn.t have a valid ShaderMap' -Quiet){throw 'Cook used a fallback material. Fix shader errors before issuing this package.'}
         if ($taskPlatform -eq 'Android') {
             $taskAPK = Get-ChildItem $taskOutput -Recurse -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
             if (-not $taskAPK) { throw 'UAT did not archive an Android APK.' }
@@ -88,7 +111,7 @@ switch ($Action) {
                 $taskData = @($taskZip.Entries | Where-Object { $_.FullName -match '^assets/.*\.(obb(\.png)?|pak)$' -and $_.Length -gt 0 })
                 if ($taskData.Count -lt 1) { throw 'APK is missing embedded game data. Check the UAT package step and bPackageDataInsideApk.' }
             } finally { $taskZip.Dispose() }
-            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.4.1\Android\TPSDuel-arm64.apk'
+            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.4.2\Android\TPSDuel-arm64.apk'
             if(Test-Path -LiteralPath $taskPreviousAPK){
                 & (Join-Path $PSScriptRoot 'CheckAndroidUpdate.ps1') -PreviousAPK $taskPreviousAPK -NewAPK $taskAPK.FullName -AndroidSDKRoot $AndroidSDKRoot -JavaRoot $JavaRoot
             }

@@ -47,6 +47,7 @@ public:
     bool IsFiring() const { return IsLocallyControlled() ? bLocalTrigger : bServerTrigger; }
     float GetReloadProgress() const;
     float GetVisualRecoil() const;
+    float GetVisualShotTime() const { return VisualShotTime; }
 
 protected:
     UPROPERTY(VisibleAnywhere) USpringArmComponent* CameraBoom;

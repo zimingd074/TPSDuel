@@ -9,6 +9,7 @@
 FAnimNode_DuelWeaponPose::FAnimNode_DuelWeaponPose()
 {
     Spine.BoneName=TEXT("spine_01");
+    Pelvis.BoneName=TEXT("pelvis");
     for (const TCHAR* Name : {TEXT("thigh_r"),TEXT("calf_r"),TEXT("foot_r"),TEXT("thigh_l"),TEXT("calf_l"),TEXT("foot_l")})
     {
         FBoneReference Bone; Bone.BoneName=Name; Legs.Add(Bone);
@@ -31,11 +32,14 @@ void FAnimNode_DuelWeaponPose::PreUpdate(const UAnimInstance* Instance)
     if (const auto* Character=Cast<ADuelCharacter>(Instance->GetOwningActor()))
     {
         Weapon=Character->GetWeaponPoseForAnimation();
-        if (const auto* DuelInstance=Cast<UDuelAnimInstance>(Instance)) DuelInstance->CacheWeaponPose(Weapon);
+        SnapshotOwner=Cast<UDuelAnimInstance>(Instance);
         Carry=Weapon.CarryAlpha;
         const FVector Local=Character->GetActorRotation().UnrotateVector(Character->GetVelocity());
         LegYaw=Character->GetCharacterMovement()->IsFalling() || Local.SizeSquared2D()<100.f ? 0.f : FMath::RadiansToDegrees(FMath::Atan2(Local.Y,Local.X));
         if (Local.X < -20.f) LegYaw=FMath::UnwindDegrees(LegYaw-180.f);
+        // Dedicated strafe/backward clips already contain the correct foot path.
+        if (const auto* DuelInstance=Cast<UDuelAnimInstance>(Instance))
+            if (DuelInstance->bDedicatedLocomotion) LegYaw=0.f;
     }
 }
 void FAnimNode_DuelWeaponPose::InitializeBoneReferences(const FBoneContainer& RequiredBones)
@@ -44,6 +48,7 @@ void FAnimNode_DuelWeaponPose::InitializeBoneReferences(const FBoneContainer& Re
     for (auto& Bone : Fingers) Bone.Initialize(RequiredBones);
     for (auto& Bone : Legs) Bone.Initialize(RequiredBones);
     Spine.Initialize(RequiredBones);
+    Pelvis.Initialize(RequiredBones);
 }
 bool FAnimNode_DuelWeaponPose::IsValidToEvaluate(const USkeleton*, const FBoneContainer& RequiredBones)
 {
@@ -53,6 +58,16 @@ bool FAnimNode_DuelWeaponPose::IsValidToEvaluate(const USkeleton*, const FBoneCo
 void FAnimNode_DuelWeaponPose::EvaluateSkeletalControl_AnyThread(FComponentSpacePoseContext& Output, TArray<FBoneTransform>& Transforms)
 {
     const auto& Bones=Output.Pose.GetPose().GetBoneContainer();
+    // Follow the body's authored vertical motion, including the jump tuck.
+    // Publish this exact evaluated pose; gun and both hands move together.
+    FDuelWeaponPose Evaluated=Weapon;
+    if (Pelvis.IsValidToEvaluate(Bones))
+    {
+        const auto Index=Pelvis.GetCompactPoseIndex(Bones);
+        const FVector Offset(0,0,Output.Pose.GetComponentSpaceTransform(Index).GetLocation().Z-Bones.GetRefPoseTransform(Index).GetLocation().Z);
+        Evaluated.Gun.AddToTranslation(Offset); Evaluated.LeftHand+=Offset; Evaluated.RightHand+=Offset; Evaluated.Magazine+=Offset;
+    }
+    if (SnapshotOwner) SnapshotOwner->CacheWeaponPose(Evaluated);
     // Reorient the animated foot trajectories for strafing without turning the
     // pelvis/torso through 90 degrees. Keep each foot on its own side to avoid
     // crossing knees. This is an IK adaptation of the supplied forward clips.
@@ -91,7 +106,7 @@ void FAnimNode_DuelWeaponPose::EvaluateSkeletalControl_AnyThread(FComponentSpace
         FTransform Upper=Output.Pose.GetComponentSpaceTransform(UpperIndex);
         FTransform Lower=Output.Pose.GetComponentSpaceTransform(LowerIndex);
         FTransform Hand=Output.Pose.GetComponentSpaceTransform(HandIndex);
-        const FVector Target=Side==0 ? Weapon.RightHand : Weapon.LeftHand;
+        const FVector Target=Side==0 ? Evaluated.RightHand : Evaluated.LeftHand;
         AnimationCore::SolveTwoBoneIK(Upper,Lower,Hand,FVector(Side==0 ? -60.f : 55.f,15,105),Target,false,1.f,1.f);
         // Palm orientation follows the gun; finger bones curl around grip/forend.
         const FQuat Palm=FRotationMatrix::MakeFromXY(FVector(0,1,0), FVector(Side==0 ? -1.f : 1.f,0,0)).ToQuat();
@@ -110,7 +125,9 @@ void FAnimNode_DuelWeaponPose::EvaluateSkeletalControl_AnyThread(FComponentSpace
             FTransform Local=Output.Pose.GetLocalSpaceTransform(Index);
             const FString Name=Finger.BoneName.ToString();
             const float Curl=Name.StartsWith(TEXT("thumb")) ? 30.f : Name.Contains(TEXT("index_01_r")) ? 18.f : Name.Contains(TEXT("_01_")) ? 45.f : 65.f;
-            Local.SetRotation(Local.GetRotation()*FQuat(FVector::YAxisVector,FMath::DegreesToRadians(Curl)));
+            // ASP already animates curled fingers. Build the final grip from
+            // the reference pose to avoid applying a second curl on top.
+            Local.SetRotation(Bones.GetRefPoseTransform(Index).GetRotation()*FQuat(FVector::YAxisVector,FMath::DegreesToRadians(Curl)));
             FTransform Curled=Local*Output.Pose.GetComponentSpaceTransform(Parent);
             TArray<FBoneTransform> One; One.Emplace(Index,Curled);
             Output.Pose.LocalBlendCSBoneTransforms(One,1.f); Transforms.Append(One);

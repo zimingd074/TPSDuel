@@ -1,14 +1,40 @@
 #include "DuelAnimInstance.h"
-#include "GameFramework/Pawn.h"
+#include "DuelCharacter.h"
+#include "DuelSettings.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimMontage.h"
 
+void UDuelAnimInstance::NativeInitializeAnimation()
+{
+    Super::NativeInitializeAnimation();
+    if (!bDedicatedLocomotion) return;
+    FireClip=LoadObject<UAnimSequence>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/ASP_Fire_Rifle_Hip.ASP_Fire_Rifle_Hip"));
+    ReloadClip=LoadObject<UAnimSequence>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/ASP_Reload_Rifle_Hip.ASP_Reload_Rifle_Hip"));
+    LastShot=-100.f; ReloadWasActive=false; ReloadMontage=nullptr;
+}
 void UDuelAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
     Super::NativeUpdateAnimation(DeltaSeconds);
-    if (const APawn* Pawn=TryGetPawnOwner())
+    auto* Character=Cast<ADuelCharacter>(TryGetPawnOwner());
+    if (!Character) return;
+    const FVector Local=Character->GetActorRotation().UnrotateVector(Character->GetVelocity());
+    DuelLocomotionRate=bDedicatedLocomotion ? 1.f : (Local.X < -20.f ? -1.f : 1.f);
+    if (Local.SizeSquared2D()>100.f) DuelDirection=FMath::RadiansToDegrees(FMath::Atan2(Local.Y,Local.X));
+    if (!bDedicatedLocomotion) return;
+    const float Progress=Character->GetReloadProgress();
+    const bool ReloadActive=Progress>=0.f;
+    if (ReloadActive && !ReloadWasActive && ReloadClip)
     {
-        // Reverse the foot cycle when moving backward; jumping keeps its own
-        // sequence players and therefore is not reversed by this value.
-        const FVector Local=Pawn->GetActorRotation().UnrotateVector(Pawn->GetVelocity());
-        DuelLocomotionRate=Local.X < -20.f ? -1.f : 1.f;
+        ReloadMontage=PlaySlotAnimationAsDynamicMontage(ReloadClip,TEXT("DefaultSlot"),.12f,.15f,
+            ReloadClip->GetPlayLength()/FMath::Max(.1f,GetDefault<UDuelSettings>()->ReloadSeconds));
+        if (ReloadMontage) Montage_SetPosition(ReloadMontage,Progress*ReloadClip->GetPlayLength());
+    }
+    if (!ReloadActive && ReloadWasActive && ReloadMontage) Montage_Stop(.15f,ReloadMontage);
+    ReloadWasActive=ReloadActive;
+    const float Shot=Character->GetVisualShotTime();
+    if (Shot>LastShot)
+    {
+        LastShot=Shot;
+        if (!ReloadActive && FireClip) PlaySlotAnimationAsDynamicMontage(FireClip,TEXT("DefaultSlot"),.03f,.08f);
     }
 }

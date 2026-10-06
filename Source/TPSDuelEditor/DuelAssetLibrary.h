@@ -17,6 +17,9 @@ public:
     static TArray<FString> RetargetQuantumLocomotion();
 
     UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")
+    static TArray<FString> RetargetCombatAnimations();
+
+    UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")
     static TArray<FString> DescribeQuantumBones();
 
     UFUNCTION(BlueprintCallable, Category="TPSDuel|Assets")

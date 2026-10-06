@@ -21,6 +21,12 @@
 #include "AnimGraphNode_BlendSpacePlayer.h"
 #include "K2Node_VariableGet.h"
 #include "DuelAnimInstance.h"
+#include "Animation/BlendSpace.h"
+#include "AnimGraphNode_Slot.h"
+#include "AnimGraphNode_LayeredBoneBlend.h"
+#include "AnimGraphNode_SaveCachedPose.h"
+#include "AnimGraphNode_UseCachedPose.h"
+#include "UObject/UnrealType.h"
 
 IMPLEMENT_MODULE(FDefaultModuleImpl, TPSDuelEditor)
 
@@ -31,14 +37,16 @@ bool UDuelAssetLibrary::ConfigureQuantumLocomotion()
     Blueprint->Modify(); Blueprint->ParentClass=UDuelAnimInstance::StaticClass();
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
     FKismetEditorUtilities::CompileBlueprint(Blueprint);
+    auto* Combat=LoadObject<UBlendSpace>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/BS_Combat.BS_Combat"));
     TArray<UEdGraph*> Graphs; Blueprint->GetAllGraphs(Graphs);
     bool Configured=false;
     for (auto* Graph : Graphs)
         for (auto* Node : TArray<UEdGraphNode*>(Graph->Nodes))
             if (auto* Player=Cast<UAnimGraphNode_BlendSpacePlayer>(Node))
             {
+                if (Combat) Player->Node.BlendSpace=Combat;
                 for (auto& Property : Player->ShowPinForProperties)
-                    if (Property.PropertyName==TEXT("PlayRate")) Property.bShowPin=true;
+                    if (Property.PropertyName==TEXT("PlayRate") || Property.PropertyName==TEXT("X") || Property.PropertyName==TEXT("Y")) Property.bShowPin=true;
                 Player->ReconstructNode();
                 auto* Rate=Player->FindPin(TEXT("PlayRate"));
                 if (!Rate) return false;
@@ -54,9 +62,31 @@ bool UDuelAssetLibrary::ConfigureQuantumLocomotion()
                     Getter->NodePosX=Player->NodePosX-250; Getter->NodePosY=Player->NodePosY+160;
                 }
                 Rate->BreakAllPinLinks(); Getter->FindPinChecked(TEXT("DuelLocomotionRate"))->MakeLinkTo(Rate); Configured=true;
+                if (Combat)
+                {
+                    auto* X=Player->FindPinChecked(TEXT("X"));
+                    auto* Y=Player->FindPinChecked(TEXT("Y"));
+                    Y->BreakAllPinLinks(); X->BreakAllPinLinks();
+                    for (const TCHAR* Member : {TEXT("Speed"),TEXT("DuelDirection")})
+                    {
+                        UK2Node_VariableGet* Variable=nullptr;
+                        for (auto* Candidate : Graph->Nodes)
+                            if (auto* Existing=Cast<UK2Node_VariableGet>(Candidate))
+                                if (Existing->VariableReference.GetMemberName()==Member) Variable=Existing;
+                        if (!Variable)
+                        {
+                            Variable=NewObject<UK2Node_VariableGet>(Graph);
+                            Variable->VariableReference.SetSelfMember(Member);
+                            Graph->AddNode(Variable,false,false); Variable->CreateNewGuid(); Variable->PostPlacedNewNode(); Variable->AllocateDefaultPins();
+                            Variable->NodePosX=Player->NodePosX-250;
+                        }
+                        Variable->FindPinChecked(Member)->MakeLinkTo(FString(Member)==TEXT("Speed") ? Y : X);
+                    }
+                }
             }
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
     FKismetEditorUtilities::CompileBlueprint(Blueprint); Blueprint->MarkPackageDirty();
+    if (auto* Defaults=Cast<UDuelAnimInstance>(Blueprint->GeneratedClass->GetDefaultObject())) Defaults->bDedicatedLocomotion=Combat!=nullptr;
     return Configured && Blueprint->Status!=BS_Error;
 }
 
@@ -194,19 +224,41 @@ bool UDuelAssetLibrary::InstallQuantumWeaponPose()
         Blueprint->Modify(); Graph->Modify();
         TArray<UEdGraphNode*> OldControls;
         for (auto* Node : Graph->Nodes)
-            if (Cast<UAnimGraphNode_LocalToComponentSpace>(Node) || Cast<UAnimGraphNode_ComponentToLocalSpace>(Node) || Node==ExistingWeapon) OldControls.Add(Node);
+            if (Cast<UAnimGraphNode_LocalToComponentSpace>(Node) || Cast<UAnimGraphNode_ComponentToLocalSpace>(Node) || Cast<UAnimGraphNode_Slot>(Node) || Cast<UAnimGraphNode_LayeredBoneBlend>(Node) || Cast<UAnimGraphNode_SaveCachedPose>(Node) || Cast<UAnimGraphNode_UseCachedPose>(Node) || Node==ExistingWeapon) OldControls.Add(Node);
         for (auto* Node : OldControls) FBlueprintEditorUtils::RemoveNode(Blueprint,Node,true);
         auto* ToComponent=NewObject<UAnimGraphNode_LocalToComponentSpace>(Graph);
         auto* Weapon=NewObject<UAnimGraphNode_DuelWeaponPose>(Graph);
         auto* ToLocal=NewObject<UAnimGraphNode_ComponentToLocalSpace>(Graph);
+        auto* Slot=NewObject<UAnimGraphNode_Slot>(Graph);
+        Slot->Node.SlotName=TEXT("DefaultSlot");
+        auto* Layer=NewObject<UAnimGraphNode_LayeredBoneBlend>(Graph);
+        Layer->Node.BlendWeights.Empty(); Layer->Node.BlendPoses.Empty(); Layer->Node.LayerSetup.Empty();
+        Layer->Node.BlendWeights.Add(1.f); Layer->Node.BlendPoses.AddDefaulted(); Layer->Node.LayerSetup.AddDefaulted();
+        Layer->Node.bMeshSpaceRotationBlend=true;
+        FBranchFilter Filter; Filter.BoneName=TEXT("spine_01"); Filter.BlendDepth=3;
+        Layer->Node.LayerSetup[0].BranchFilters.Add(Filter);
+        auto* Cache=NewObject<UAnimGraphNode_SaveCachedPose>(Graph);
+        Cache->CacheName=TEXT("DuelLocomotion");
+        auto* Base=NewObject<UAnimGraphNode_UseCachedPose>(Graph);
+        auto* ActionSource=NewObject<UAnimGraphNode_UseCachedPose>(Graph);
+        Base->SaveCachedPoseNode=Cache; ActionSource->SaveCachedPoseNode=Cache;
+        AddNode(Cache,Root->NodePosX-1600); AddNode(Base,Root->NodePosX-1400); AddNode(ActionSource,Root->NodePosX-1200);
+        AddNode(Slot,Root->NodePosX-1000); AddNode(Layer,Root->NodePosX-800);
         AddNode(ToComponent,Root->NodePosX-600); AddNode(Weapon,Root->NodePosX-400); AddNode(ToLocal,Root->NodePosX-200);
         Input->BreakAllPinLinks();
-        Source->MakeLinkTo(ToComponent->FindPinChecked(TEXT("LocalPose")));
+        Source->BreakAllPinLinks();
+        Source->MakeLinkTo(Cache->FindPinChecked(TEXT("Pose")));
+        ActionSource->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Slot->FindPinChecked(TEXT("Source")));
+        Base->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Layer->FindPinChecked(TEXT("BasePose")));
+        Slot->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Layer->FindPinChecked(TEXT("BlendPoses_0")));
+        Layer->FindPinChecked(TEXT("Pose"))->MakeLinkTo(ToComponent->FindPinChecked(TEXT("LocalPose")));
         ToComponent->FindPinChecked(TEXT("ComponentPose"))->MakeLinkTo(Weapon->FindPinChecked(TEXT("ComponentPose")));
         Weapon->FindPinChecked(TEXT("Pose"))->MakeLinkTo(ToLocal->FindPinChecked(TEXT("ComponentPose")));
         ToLocal->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Input);
         FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
         FKismetEditorUtilities::CompileBlueprint(Blueprint);
+        if (auto* Defaults=Cast<UDuelAnimInstance>(Blueprint->GeneratedClass->GetDefaultObject()))
+            Defaults->bDedicatedLocomotion=LoadObject<UBlendSpace>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/BS_Combat.BS_Combat"))!=nullptr;
         Blueprint->MarkPackageDirty();
         return Blueprint->Status!=BS_Error;
     }
@@ -324,5 +376,75 @@ TArray<FString> UDuelAssetLibrary::RetargetQuantumLocomotion()
     Context.RetargetAnimations(OldSkeleton,NewSkeleton);
     for(UObject* Asset : Context.GetAllDuplicates())
         if(Asset) Result.Add(Asset->GetPathName());
+    return Result;
+}
+
+TArray<FString> UDuelAssetLibrary::RetargetCombatAnimations()
+{
+    TArray<FString> Result;
+    auto* OldMesh=LoadObject<USkeletalMesh>(nullptr,TEXT("/Game/AnimStarterPack/UE4_Mannequin/Mesh/SK_Mannequin.SK_Mannequin"));
+    auto* NewMesh=LoadObject<USkeletalMesh>(nullptr,TEXT("/Game/ThirdParty/Quantum/SKM_Character.SKM_Character"));
+    auto* Rig=LoadObject<URig>(nullptr,TEXT("/Engine/EngineMeshes/Humanoid.Humanoid"));
+    if (!OldMesh || !NewMesh || !Rig) return Result;
+    auto* OldSkeleton=OldMesh->GetSkeleton(); auto* NewSkeleton=NewMesh->GetSkeleton();
+    OldSkeleton->SetRigConfig(Rig); NewSkeleton->SetRigConfig(Rig);
+    OldSkeleton->SetPreviewMesh(OldMesh); NewSkeleton->SetPreviewMesh(NewMesh);
+    for (const auto& Node : Rig->GetNodes())
+    {
+        if (OldMesh->GetRefSkeleton().FindBoneIndex(Node.Name)!=INDEX_NONE) OldSkeleton->SetRigBoneMapping(Node.Name,Node.Name);
+        FName Target=Node.Name;
+        if (Target==TEXT("spine_02")) Target=TEXT("spine_03");
+        if (Node.Name==TEXT("spine_03")) Target=TEXT("spine_05");
+        if (NewMesh->GetRefSkeleton().FindBoneIndex(Target)!=INDEX_NONE) NewSkeleton->SetRigBoneMapping(Node.Name,Target);
+    }
+    NewSkeleton->SetBoneTranslationRetargetingMode(0,EBoneTranslationRetargetingMode::Skeleton,true);
+    NewSkeleton->SetBoneTranslationRetargetingMode(0,EBoneTranslationRetargetingMode::Animation);
+    NewSkeleton->SetBoneTranslationRetargetingMode(NewMesh->GetRefSkeleton().FindBoneIndex(TEXT("pelvis")),EBoneTranslationRetargetingMode::AnimationScaled);
+    const TCHAR* Names[]={TEXT("Idle_Rifle_Hip"),TEXT("Idle_Rifle_Ironsights"),TEXT("Jog_Fwd_Rifle"),TEXT("Jog_Bwd_Rifle"),TEXT("Jog_Lt_Rifle"),TEXT("Jog_Rt_Rifle"),TEXT("Walk_Fwd_Rifle_Ironsights"),TEXT("Walk_Bwd_Rifle_Ironsights"),TEXT("Walk_Lt_Rifle_Ironsights"),TEXT("Walk_Rt_Rifle_Ironsights"),TEXT("Sprint_Fwd_Rifle"),TEXT("Fire_Rifle_Hip"),TEXT("Fire_Rifle_Ironsights"),TEXT("Reload_Rifle_Hip"),TEXT("Reload_Rifle_Ironsights"),TEXT("Jump_From_Jog")};
+    TArray<TWeakObjectPtr<UObject>> Sources;
+    for (const TCHAR* Name : Names)
+    {
+        const FString Target=FString::Printf(TEXT("/Game/ThirdParty/Quantum/Animations/Combat/ASP_%s.ASP_%s"),Name,Name);
+        if (auto* Existing=LoadObject<UAnimSequence>(nullptr,*Target, nullptr,LOAD_NoWarn)) Result.Add(Target);
+        else
+        {
+            const FString Source=FString::Printf(TEXT("/Game/AnimStarterPack/%s.%s"),Name,Name);
+            auto* Sequence=LoadObject<UAnimSequence>(nullptr,*Source);
+            if (!Sequence) return TArray<FString>();
+            Sources.Add(Sequence);
+        }
+    }
+    if (Sources.Num())
+    {
+        EditorAnimUtils::FNameDuplicationRule Rule; Rule.Prefix=TEXT("ASP_"); Rule.FolderPath=TEXT("/Game/ThirdParty/Quantum/Animations/Combat");
+        EditorAnimUtils::FAnimationRetargetContext Context(Sources,true,true,Rule);
+        Context.DuplicateAssetsToRetarget(NewSkeleton->GetOutermost(),&Rule); Context.RetargetAnimations(OldSkeleton,NewSkeleton);
+        for (auto* Asset : Context.GetAllDuplicates()) if (Asset) Result.Add(Asset->GetPathName());
+    }
+    const FString BSName=TEXT("BS_Combat");
+    auto* Package=CreatePackage(TEXT("/Game/ThirdParty/Quantum/Animations/Combat/BS_Combat"));
+    auto* Blend=FindObject<UBlendSpace>(Package,*BSName);
+    if (!Blend) { Blend=NewObject<UBlendSpace>(Package,*BSName,RF_Public|RF_Standalone); FAssetRegistryModule::AssetCreated(Blend); }
+    Blend->SetSkeleton(NewSkeleton);
+    auto* Parameters=FindFProperty<FStructProperty>(UBlendSpaceBase::StaticClass(),TEXT("BlendParameters"));
+    if (!Parameters) return TArray<FString>();
+    auto* Direction=Parameters->ContainerPtrToValuePtr<FBlendParameter>(Blend,0);
+    Direction->DisplayName=TEXT("Direction"); Direction->Min=-180.f; Direction->Max=180.f; Direction->GridNum=4;
+    auto* Speed=Parameters->ContainerPtrToValuePtr<FBlendParameter>(Blend,1);
+    Speed->DisplayName=TEXT("Speed"); Speed->Min=0.f; Speed->Max=375.f; Speed->GridNum=2;
+    while (Blend->GetNumberOfBlendSamples()) Blend->DeleteSample(Blend->GetNumberOfBlendSamples()-1);
+    TArray<int32> Mapping; TArray<FEditorElement> Grid;
+    const TCHAR* Walk[]={TEXT("Walk_Bwd_Rifle_Ironsights"),TEXT("Walk_Lt_Rifle_Ironsights"),TEXT("Walk_Fwd_Rifle_Ironsights"),TEXT("Walk_Rt_Rifle_Ironsights"),TEXT("Walk_Bwd_Rifle_Ironsights")};
+    const TCHAR* Jog[]={TEXT("Jog_Bwd_Rifle"),TEXT("Jog_Lt_Rifle"),TEXT("Jog_Fwd_Rifle"),TEXT("Jog_Rt_Rifle"),TEXT("Jog_Bwd_Rifle")};
+    for (int32 X=0; X<5; ++X) for (int32 Y=0; Y<3; ++Y)
+    {
+        const TCHAR* Name=Y==0 ? TEXT("Idle_Rifle_Hip") : (Y==1 ? Walk[X] : Jog[X]);
+        auto* Sequence=LoadObject<UAnimSequence>(nullptr,*FString::Printf(TEXT("/Game/ThirdParty/Quantum/Animations/Combat/ASP_%s.ASP_%s"),Name,Name));
+        if (!Sequence || !Blend->AddSample(Sequence,FVector(-180+90*X,187.5f*Y,0))) return TArray<FString>();
+        Mapping.Add(X*3+Y); FEditorElement Element; Element.Indices[0]=X*3+Y; Element.Weights[0]=1.f; Grid.Add(Element);
+    }
+    Blend->TargetWeightInterpolationSpeedPerSec=8.f;
+    Blend->ValidateSampleData(); Blend->FillupGridElements(Mapping,Grid); Blend->MarkPackageDirty();
+    Result.Add(Blend->GetPathName());
     return Result;
 }
