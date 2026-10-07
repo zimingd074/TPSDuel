@@ -100,7 +100,7 @@ switch ($Action) {
             }
         }
         if(-not $taskCookLog){throw 'Missing current cook log; cannot verify materials.'}
-        Copy-Item -LiteralPath $taskCookLog.FullName -Destination (Join-Path $taskProjectRoot ('Saved\cook-'+$taskPlatform+'-v053.log')) -Force
+        Copy-Item -LiteralPath $taskCookLog.FullName -Destination (Join-Path $taskProjectRoot ('Saved\cook-'+$taskPlatform+'-v054.log')) -Force
         if(Select-String -LiteralPath $taskCookLog.FullName -Pattern 'Failed to compile Material|Cooking a material resource .*doesn.t have a valid ShaderMap' -Quiet){throw 'Cook used a fallback material. Fix shader errors before issuing this package.'}
         if ($taskPlatform -eq 'Android') {
             $taskAPK = Get-ChildItem $taskOutput -Recurse -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -111,7 +111,7 @@ switch ($Action) {
                 $taskData = @($taskZip.Entries | Where-Object { $_.FullName -match '^assets/.*\.(obb(\.png)?|pak)$' -and $_.Length -gt 0 })
                 if ($taskData.Count -lt 1) { throw 'APK is missing embedded game data. Check the UAT package step and bPackageDataInsideApk.' }
             } finally { $taskZip.Dispose() }
-            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.5.1\Android\TPSDuel-arm64.apk'
+            $taskPreviousAPK=Join-Path $taskProjectRoot 'Builds\Releases\0.5.3\Android\TPSDuel-arm64.apk'
             if(Test-Path -LiteralPath $taskPreviousAPK){
                 & (Join-Path $PSScriptRoot 'CheckAndroidUpdate.ps1') -PreviousAPK $taskPreviousAPK -NewAPK $taskAPK.FullName -AndroidSDKRoot $AndroidSDKRoot -JavaRoot $JavaRoot
             }

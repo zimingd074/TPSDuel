@@ -46,6 +46,7 @@ public:
     float GetVisualAimPitch() const;
     float GetVisualAimAlpha() const { return VisualAimAlpha; }
     float GetVisualCarryAlpha() const { return VisualWeaponPose.CarryAlpha; }
+    float GetVisualObstructionAlpha() const { return VisualWeaponPose.ObstructionAlpha; }
     const FDuelWeaponPose& GetVisualWeaponPose() const { return VisualWeaponPose; }
     const FDuelWeaponPose& GetWeaponPoseForAnimation() const { return DesiredWeaponPose; }
     bool IsFiring() const { return IsLocallyControlled() ? bLocalTrigger : bServerTrigger; }
@@ -103,6 +104,7 @@ private:
     bool bQuantumCharacter = false;
     float VisualAimAlpha = 0.f;
     float VisualCarryAlpha = 0.f;
+    float VisualObstructionAlpha = 0.f;
     FDuelWeaponPose VisualWeaponPose;
     FDuelWeaponPose DesiredWeaponPose;
     FDelegateHandle WeaponPoseFinalizedHandle;

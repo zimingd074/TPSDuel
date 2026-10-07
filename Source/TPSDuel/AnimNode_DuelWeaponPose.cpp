@@ -9,7 +9,6 @@
 FAnimNode_DuelWeaponPose::FAnimNode_DuelWeaponPose()
 {
     Spine.BoneName=TEXT("spine_01");
-    Pelvis.BoneName=TEXT("pelvis");
     for (const TCHAR* Name : {TEXT("thigh_r"),TEXT("calf_r"),TEXT("foot_r"),TEXT("thigh_l"),TEXT("calf_l"),TEXT("foot_l")})
     {
         FBoneReference Bone; Bone.BoneName=Name; Legs.Add(Bone);
@@ -56,7 +55,6 @@ void FAnimNode_DuelWeaponPose::InitializeBoneReferences(const FBoneContainer& Re
     for (auto& Bone : Fingers) Bone.Initialize(RequiredBones);
     for (auto& Bone : Legs) Bone.Initialize(RequiredBones);
     Spine.Initialize(RequiredBones);
-    Pelvis.Initialize(RequiredBones);
 }
 bool FAnimNode_DuelWeaponPose::IsValidToEvaluate(const USkeleton*, const FBoneContainer& RequiredBones)
 {
@@ -66,13 +64,14 @@ bool FAnimNode_DuelWeaponPose::IsValidToEvaluate(const USkeleton*, const FBoneCo
 void FAnimNode_DuelWeaponPose::EvaluateSkeletalControl_AnyThread(FComponentSpacePoseContext& Output, TArray<FBoneTransform>& Transforms)
 {
     const auto& Bones=Output.Pose.GetPose().GetBoneContainer();
-    // Follow the body's authored vertical motion, including the jump tuck.
+    // Anchor to the evaluated shoulders, including crouch lean and recoil.
     // Publish this exact evaluated pose; gun and both hands move together.
     FDuelWeaponPose Evaluated=Weapon;
-    if (Pelvis.IsValidToEvaluate(Bones))
+    if (Arms[0].IsValidToEvaluate(Bones) && Arms[3].IsValidToEvaluate(Bones))
     {
-        const auto Index=Pelvis.GetCompactPoseIndex(Bones);
-        const FVector Offset(0,0,Output.Pose.GetComponentSpaceTransform(Index).GetLocation().Z-Bones.GetRefPoseTransform(Index).GetLocation().Z);
+        const FVector Shoulder=(Output.Pose.GetComponentSpaceTransform(Arms[0].GetCompactPoseIndex(Bones)).GetLocation()
+            +Output.Pose.GetComponentSpaceTransform(Arms[3].GetCompactPoseIndex(Bones)).GetLocation())*.5f;
+        const FVector Offset=Shoulder-FVector(0,0,148);
         Evaluated.Gun.AddToTranslation(Offset); Evaluated.LeftHand+=Offset; Evaluated.RightHand+=Offset; Evaluated.Magazine+=Offset;
     }
     if (SnapshotOwner) SnapshotOwner->CacheWeaponPose(Evaluated);
@@ -117,10 +116,13 @@ void FAnimNode_DuelWeaponPose::EvaluateSkeletalControl_AnyThread(FComponentSpace
         FTransform Lower=Output.Pose.GetComponentSpaceTransform(LowerIndex);
         FTransform Hand=Output.Pose.GetComponentSpaceTransform(HandIndex);
         const FVector Target=Side==0 ? Evaluated.RightHand : Evaluated.LeftHand;
-        AnimationCore::SolveTwoBoneIK(Upper,Lower,Hand,FVector(Side==0 ? -60.f : 55.f,15,105),Target,false,1.f,1.f);
+        // A shoulder-relative, downward pole keeps crouched elbows below the
+        // shoulder rather than aiming at the old standing-height pole.
+        const FVector Elbow=Upper.GetLocation()+FVector(Side==0 ? -32.f : 32.f,-6.f,-30.f);
+        AnimationCore::SolveTwoBoneIK(Upper,Lower,Hand,Elbow,Target,false,1.f,1.f);
         // Palm orientation follows the gun; finger bones curl around grip/forend.
         const FQuat Palm=FRotationMatrix::MakeFromXY(FVector(0,1,0), FVector(Side==0 ? -1.f : 1.f,0,0)).ToQuat();
-        Hand.SetRotation(Weapon.Gun.GetRotation()*Palm);
+        Hand.SetRotation(Evaluated.Gun.GetRotation()*Palm);
         TArray<FBoneTransform> ArmTransforms;
         ArmTransforms.Emplace(UpperIndex,Upper); ArmTransforms.Emplace(LowerIndex,Lower); ArmTransforms.Emplace(HandIndex,Hand);
         Output.Pose.LocalBlendCSBoneTransforms(ArmTransforms,1.f);

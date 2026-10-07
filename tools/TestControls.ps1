@@ -2,7 +2,7 @@ $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskRuntime=Join-Path $taskRoot 'Builds\Windows\WindowsNoEditor\TPSDuel'
 $taskExe=Join-Path $taskRuntime 'Binaries\Win64\TPSDuel.exe'
-$taskLog=Join-Path $taskRoot 'Saved\controls-v053.log'
+$taskLog=Join-Path $taskRoot 'Saved\controls-v054.log'
 $taskResult=Join-Path $taskRuntime 'Saved\InputTest.txt'
 if(-not(Test-Path -LiteralPath $taskExe)){throw 'Package Windows first.'}
 if(Test-Path -LiteralPath $taskResult){Remove-Item -LiteralPath $taskResult}

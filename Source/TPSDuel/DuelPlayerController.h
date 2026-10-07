@@ -48,6 +48,7 @@ private:
     void LookUp(float Value);
     void TickSmokeTest();
     bool TickInputTest();
+    bool TickWeaponTest();
     UFUNCTION(Server, Reliable) void ServerLoaded();
     UFUNCTION(Server, Reliable) void ServerReady();
     TSharedPtr<SDuelOverlay> Overlay;

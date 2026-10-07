@@ -29,6 +29,7 @@ void ADuelPlayerController::TickSmokeTest()
 {
 #if !UE_BUILD_SHIPPING
     if (TickInputTest()) return;
+    if (TickWeaponTest()) return;
     // Exercise real movement and sample the resulting pose, not a teleported pose.
     if (FParse::Param(FCommandLine::Get(),TEXT("DuelMotionTest")))
     {
@@ -139,6 +140,8 @@ void ADuelPlayerController::TickSmokeTest()
         {
             if (FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewAim"))) PreviewCharacter->SetAiming(true);
             if (FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewCrouch"))) PreviewCharacter->SetCrouching(true);
+            if (FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewFire")) && PreviewNow-SmokeStart>7.5 && !MotionFireRequested)
+            { PreviewCharacter->BeginFire(); MotionFireRequested=true; }
             float Pitch=0.f;
             const bool HasPitch=FParse::Value(FCommandLine::Get(),TEXT("DuelPreviewPitch="),Pitch);
             if (HasPitch || FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewSide")))
@@ -168,6 +171,8 @@ void ADuelPlayerController::TickSmokeTest()
                 const FVector Left=PreviewCharacter->GetMesh()->GetBoneLocation(TEXT("hand_l"),EBoneSpaces::ComponentSpace);
                 const FVector Right=PreviewCharacter->GetMesh()->GetBoneLocation(TEXT("hand_r"),EBoneSpaces::ComponentSpace);
                 UE_LOG(LogTPSDuel,Display,TEXT("VISUAL_GRIP leftError=%.2f rightError=%.2f reload=%.2f"),FVector::Dist(Left,Pose.LeftHand),FVector::Dist(Right,Pose.RightHand),PreviewCharacter->GetReloadProgress());
+                for (const TCHAR* Bone : {TEXT("upperarm_r"),TEXT("lowerarm_r"),TEXT("hand_r"),TEXT("upperarm_l"),TEXT("lowerarm_l"),TEXT("hand_l"),TEXT("head"),TEXT("spine_03")})
+                    UE_LOG(LogTPSDuel,Display,TEXT("WEAPON_BONE name=%s position=%s"),Bone,*PreviewCharacter->GetMesh()->GetBoneLocation(Bone,EBoneSpaces::ComponentSpace).ToString());
             }
             FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),Preview+TEXT(".png")),true,false);
             SmokeExitAt=PreviewNow+2;
@@ -246,6 +251,7 @@ void ADuelPlayerController::TickSmokeTest()
         }
     }
     ADuelCharacter* Self = Cast<ADuelCharacter>(GetPawn());
+    if (Self && SmokeStanceStart>0 && Now-SmokeStanceStart>=3.0 && FParse::Param(FCommandLine::Get(),TEXT("DuelSmokeCrouch"))) Self->SetCrouching(true);
     const ADuelPlayerState* MyState = GetPlayerState<ADuelPlayerState>();
     if (Self && MyState && SmokeStanceStart==0) SmokeStanceStart=Now;
     if (Self && SmokeStanceStart>0 && Now-SmokeStanceStart<3.0)

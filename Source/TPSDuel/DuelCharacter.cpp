@@ -242,7 +242,21 @@ void ADuelCharacter::Tick(float DeltaSeconds)
     VisualCarryAlpha=FMath::FInterpTo(VisualCarryAlpha,CarryTarget,DeltaSeconds,CarryTarget>VisualCarryAlpha ? 8.f : 20.f);
     if (bQuantumCharacter)
     {
-        DesiredWeaponPose=FDuelWeaponPose::Calculate(Pitch,VisualAimAlpha,GetReloadProgress(),GetVisualRecoil(),VisualCarryAlpha);
+        const float Reload=GetReloadProgress(), Kick=GetVisualRecoil();
+        const auto FreePose=FDuelWeaponPose::Calculate(Pitch,VisualAimAlpha,Reload,Kick,VisualCarryAlpha);
+        const FVector Shoulder=(GetMesh()->GetBoneLocation(TEXT("upperarm_r"),EBoneSpaces::ComponentSpace)
+            +GetMesh()->GetBoneLocation(TEXT("upperarm_l"),EBoneSpaces::ComponentSpace))*.5f;
+        const FVector Offset=Shoulder-FVector(0,0,148);
+        const FTransform MeshWorld=GetMesh()->GetComponentTransform();
+        const FVector Start=MeshWorld.TransformPosition(FreePose.Gun.TransformPosition(FVector(0,-22,10))+Offset);
+        const FVector Tip=MeshWorld.TransformPosition(FreePose.Gun.TransformPosition(FVector(0,57,14))+Offset);
+        FHitResult Contact;
+        FCollisionQueryParams Query(SCENE_QUERY_STAT(DuelWeaponCover),false,this);
+        const bool Blocked=GetWorld()->SweepSingleByChannel(Contact,Start,Tip,FQuat::Identity,ECC_Visibility,FCollisionShape::MakeSphere(6.f),Query);
+        const float Target=Blocked ? FMath::Clamp(.4f+1.f-Contact.Time,0.f,1.f) : 0.f;
+        // React immediately when approaching cover, ease back after leaving it.
+        VisualObstructionAlpha=Target>VisualObstructionAlpha ? Target : FMath::FInterpTo(VisualObstructionAlpha,Target,DeltaSeconds,8.f);
+        DesiredWeaponPose=FDuelWeaponPose::Calculate(Pitch,VisualAimAlpha,Reload,Kick,VisualCarryAlpha,VisualObstructionAlpha);
         Magazine->SetVisibility(IsAlive() && Magazine->GetStaticMesh()!=nullptr);
     }
     else

@@ -10,9 +10,10 @@ struct FDuelWeaponPose
     FVector LeftHand = FVector::ZeroVector;
     FVector Magazine = FVector::ZeroVector;
     float CarryAlpha = 0.f;
+    float ObstructionAlpha = 0.f;
     bool MagazineInHand = false;
 
-    static FDuelWeaponPose Calculate(float Pitch, float Aim, float Reload, float Kick, float Carry=0.f)
+    static FDuelWeaponPose Calculate(float Pitch, float Aim, float Reload, float Kick, float Carry=0.f, float Obstruction=0.f)
     {
         FDuelWeaponPose Pose;
         Pose.CarryAlpha=Carry;
@@ -23,11 +24,25 @@ struct FDuelWeaponPose
         // Both hands follow this transform; aim/fire/reload leave this stance.
         const FQuat Running=FQuat(FVector::UpVector,FMath::DegreesToRadians(-40.f))
             * FQuat(FVector::ForwardVector,FMath::DegreesToRadians(-32.f));
-        const FQuat Rotation=FQuat::Slerp(Ready,Running,FMath::Clamp(Carry,0.f,1.f));
-        const FVector Grip=FMath::Lerp(FMath::Lerp(FVector(-9,12,133),FVector(-7,13,142),Aim)+FVector(0,-Kick*2.f,-Tilt*12.f),FVector(-13,23,132),Carry);
-        Pose.Gun = FTransform(Rotation, Grip);
+        const FQuat FreeRotation=FQuat::Slerp(Ready,Running,FMath::Clamp(Carry,0.f,1.f));
+        // Fold beside the right shoulder when the barrel meets cover.
+        Pose.ObstructionAlpha=FMath::Clamp(Obstruction,0.f,1.f);
+        const FQuat Folded=FQuat(FVector::UpVector,FMath::DegreesToRadians(80.f))
+            * FQuat(FVector::ForwardVector,FMath::DegreesToRadians(-25.f));
+        const FQuat Rotation=FQuat::Slerp(FreeRotation,Folded,Pose.ObstructionAlpha);
+        FVector Grip=FMath::Lerp(FMath::Lerp(FVector(-9,12,133),FVector(-7,13,142),Aim)+FVector(0,-Kick*2.f,-Tilt*12.f),FVector(-13,23,132),Carry);
+        // Keep steep up/down aim outside the chest and face instead of rotating
+        // the barrel down the middle of the body.
+        Grip.X-=16.f*FMath::SmoothStep(15.f,65.f,FMath::Abs(Pitch))*(1.f-Carry);
+        // Rotate about the stock contact instead of driving the stock through
+        // the chest/head as the player looks up or down.
+        const FVector Stock(0,-22,10);
+        const FVector FreeGrip=Grip+Stock-FreeRotation.RotateVector(Stock);
+        const FVector StockContact=FreeGrip+FreeRotation.RotateVector(Stock);
+        Pose.Gun = FTransform(Rotation,StockContact-Rotation.RotateVector(Stock));
         Pose.RightHand = Pose.Gun.TransformPosition(FVector(0,-4,1));
-        const FVector Support = Pose.Gun.TransformPosition(FVector(6,30,9));
+        const float SupportY=30.f-6.f*FMath::SmoothStep(25.f,70.f,FMath::Abs(Pitch));
+        const FVector Support = Pose.Gun.TransformPosition(FVector(6,SupportY,9));
         const FVector Well = Pose.Gun.TransformPosition(FVector(0,17,2));
         const FVector Belt(14,4,101);
         Pose.LeftHand = Support;

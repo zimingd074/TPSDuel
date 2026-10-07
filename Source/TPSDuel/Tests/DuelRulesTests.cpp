@@ -14,6 +14,17 @@ bool FDuelRulesTest::RunTest(const FString&)
     const auto Carry=FDuelWeaponPose::Calculate(0.f,0.f,-1.f,0.f,1.f);
     TestTrue(TEXT("Moving low-ready muzzle points diagonally down"),Carry.Gun.GetRotation().GetAxisY().Z<-.4f);
     TestTrue(TEXT("Ready rifle returns to horizontal"),FMath::Abs(FDuelWeaponPose::Calculate(0.f,0.f,-1.f,0.f,0.f).Gun.GetRotation().GetAxisY().Z)<.01f);
+    const FVector Stock(0,-22,10);
+    const auto Level=FDuelWeaponPose::Calculate(0.f,1.f,-1.f,0.f);
+    for (float Angle : {-60.f,60.f})
+    {
+        const FVector Contact=FDuelWeaponPose::Calculate(Angle,1.f,-1.f,0.f).Gun.TransformPosition(Stock);
+        TestTrue(TEXT("Pitch preserves stock height and forward contact"),FMath::Abs(Contact.Y-Level.Gun.TransformPosition(Stock).Y)<.01f && FMath::Abs(Contact.Z-Level.Gun.TransformPosition(Stock).Z)<.01f);
+        TestTrue(TEXT("Steep aim moves rifle outside torso"),Contact.X<Level.Gun.TransformPosition(Stock).X-10.f);
+    }
+    const auto Folded=FDuelWeaponPose::Calculate(0.f,1.f,-1.f,0.f,0.f,1.f);
+    TestTrue(TEXT("Cover tuck preserves stock contact"),FVector::Dist(Level.Gun.TransformPosition(Stock),Folded.Gun.TransformPosition(Stock))<.01f);
+    TestTrue(TEXT("Cover tuck reduces barrel forward reach"),Folded.Gun.TransformPosition(FVector(0,57,14)).Y<Level.Gun.TransformPosition(FVector(0,57,14)).Y*.5f);
     TestFalse(TEXT("Dead player cannot fire"), DuelRules::CanFire(true, false, false, 30, 2, 1, .1));
     TestFalse(TEXT("Reload blocks fire"), DuelRules::CanFire(true, true, true, 30, 2, 1, .1));
     TestEqual(TEXT("Spawn protection blocks damage"), DuelRules::DamageResult(100, 25, true, true), 100.f);

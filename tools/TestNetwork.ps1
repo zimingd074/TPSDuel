@@ -1,4 +1,4 @@
-param([string]$EngineRoot='D:\Program Files\Epic Games\UE_4.27', [switch]$Packaged, [switch]$CloseRange)
+param([string]$EngineRoot='D:\Program Files\Epic Games\UE_4.27', [switch]$Packaged, [switch]$CloseRange, [switch]$Crouched)
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskProject=Join-Path $taskRoot 'TPSDuel.uproject'
@@ -18,6 +18,7 @@ $taskHostLog=Join-Path $taskResults 'host.log'
 $taskClientLog=Join-Path $taskResults 'client.log'
 $taskCommon=' -game -NullRHI -nosound -unattended -nosplash -DuelShotLog -DuelSmokeRun='+$taskRun
 if($CloseRange) { $taskCommon+=' -DuelSmokeClose' }
+if($Crouched) { $taskCommon+=' -DuelSmokeCrouch' }
 $taskHostArgs=$taskPrefix+'/Game/Maps/L_Arena?listen?duel=1'+$taskCommon+' -DuelSmoke=Host -port=7777 -abslog="'+$taskHostLog+'"'
 $taskHost=Start-Process -FilePath $taskEditor -ArgumentList $taskHostArgs -WindowStyle Hidden -PassThru
 $taskClient=$null
