@@ -35,11 +35,19 @@ void FAnimNode_DuelWeaponPose::PreUpdate(const UAnimInstance* Instance)
         SnapshotOwner=Cast<UDuelAnimInstance>(Instance);
         Carry=Weapon.CarryAlpha;
         const FVector Local=Character->GetActorRotation().UnrotateVector(Character->GetVelocity());
+        StrideScale=1.f;
         LegYaw=Character->GetCharacterMovement()->IsFalling() || Local.SizeSquared2D()<100.f ? 0.f : FMath::RadiansToDegrees(FMath::Atan2(Local.Y,Local.X));
         if (Local.X < -20.f) LegYaw=FMath::UnwindDegrees(LegYaw-180.f);
         // Dedicated strafe/backward clips already contain the correct foot path.
         if (const auto* DuelInstance=Cast<UDuelAnimInstance>(Instance))
-            if (DuelInstance->bDedicatedLocomotion) LegYaw=0.f;
+            if (DuelInstance->bDedicatedLocomotion)
+            {
+                LegYaw=0.f;
+                // Blending forward and lateral strides shortens the diagonal
+                // foot path. Restore its length without speeding up the cycle.
+                if (!Character->GetCharacterMovement()->IsFalling() && Local.SizeSquared2D()>100.f)
+                    StrideScale=FMath::Clamp((FMath::Abs(Local.X)+FMath::Abs(Local.Y))/Local.Size2D(),1.f,FMath::Sqrt(2.f));
+            }
     }
 }
 void FAnimNode_DuelWeaponPose::InitializeBoneReferences(const FBoneContainer& RequiredBones)
@@ -68,10 +76,9 @@ void FAnimNode_DuelWeaponPose::EvaluateSkeletalControl_AnyThread(FComponentSpace
         Evaluated.Gun.AddToTranslation(Offset); Evaluated.LeftHand+=Offset; Evaluated.RightHand+=Offset; Evaluated.Magazine+=Offset;
     }
     if (SnapshotOwner) SnapshotOwner->CacheWeaponPose(Evaluated);
-    // Reorient the animated foot trajectories for strafing without turning the
-    // pelvis/torso through 90 degrees. Keep each foot on its own side to avoid
-    // crossing knees. This is an IK adaptation of the supplied forward clips.
-    if (FMath::Abs(LegYaw)>1.f)
+    // Adapt fallback strides to direction, or restore diagonal stride length
+    // on dedicated clips. Keep the authored foot height and knee bend plane.
+    if (FMath::Abs(LegYaw)>1.f || StrideScale>1.001f)
         for (int32 Side=0; Side<2; ++Side)
         {
             if (!Legs[Side*3].IsValidToEvaluate(Bones) || !Legs[Side*3+1].IsValidToEvaluate(Bones) || !Legs[Side*3+2].IsValidToEvaluate(Bones)) continue;
@@ -83,9 +90,12 @@ void FAnimNode_DuelWeaponPose::EvaluateSkeletalControl_AnyThread(FComponentSpace
             FTransform Upper=Output.Pose.GetComponentSpaceTransform(UpperIndex);
             FTransform Lower=Output.Pose.GetComponentSpaceTransform(LowerIndex);
             FTransform Foot=Output.Pose.GetComponentSpaceTransform(FootIndex);
-            FVector Goal=Reference.GetLocation()+FQuat(FVector::UpVector,FMath::DegreesToRadians(LegYaw)).RotateVector(Foot.GetLocation()-Reference.GetLocation());
-            Goal.X=Side==0 ? FMath::Clamp(Goal.X,-54.f,-4.f) : FMath::Clamp(Goal.X,4.f,54.f);
-            AnimationCore::SolveTwoBoneIK(Upper,Lower,Foot,Upper.GetLocation()+FVector(Side==0 ? -12.f : 12.f,55.f,0),Goal,false,1.f,1.f);
+            FVector Delta=Foot.GetLocation()-Reference.GetLocation();
+            Delta.X*=StrideScale; Delta.Y*=StrideScale;
+            FVector Goal=Reference.GetLocation()+FQuat(FVector::UpVector,FMath::DegreesToRadians(LegYaw)).RotateVector(Delta);
+            const FVector Knee=StrideScale>1.001f ? Lower.GetLocation() : Upper.GetLocation()+FVector(Side==0 ? -12.f : 12.f,55.f,0);
+            if (FMath::Abs(LegYaw)>1.f) Goal.X=Side==0 ? FMath::Clamp(Goal.X,-54.f,-4.f) : FMath::Clamp(Goal.X,4.f,54.f);
+            AnimationCore::SolveTwoBoneIK(Upper,Lower,Foot,Knee,Goal,false,1.f,1.f);
             TArray<FBoneTransform> Adjusted;
             Adjusted.Emplace(UpperIndex,Upper); Adjusted.Emplace(LowerIndex,Lower); Adjusted.Emplace(FootIndex,Foot);
             Output.Pose.LocalBlendCSBoneTransforms(Adjusted,1.f); Transforms.Append(Adjusted);
@@ -94,7 +104,7 @@ void FAnimNode_DuelWeaponPose::EvaluateSkeletalControl_AnyThread(FComponentSpace
     {
         const auto Index=Spine.GetCompactPoseIndex(Bones);
         FTransform Upright=Output.Pose.GetComponentSpaceTransform(Index);
-        Upright.SetRotation(FQuat(FVector::ForwardVector,FMath::DegreesToRadians(10.f*Carry))*Upright.GetRotation());
+        Upright.SetRotation(FQuat(FVector::ForwardVector,FMath::DegreesToRadians(3.f*Carry))*Upright.GetRotation());
         TArray<FBoneTransform> Adjusted; Adjusted.Emplace(Index,Upright);
         Output.Pose.LocalBlendCSBoneTransforms(Adjusted,1.f); Transforms.Append(Adjusted);
     }

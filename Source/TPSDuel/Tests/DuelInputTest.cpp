@@ -13,6 +13,7 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
+#include "Misc/App.h"
 
 bool ADuelPlayerController::TickInputTest()
 {
@@ -29,6 +30,7 @@ bool ADuelPlayerController::TickInputTest()
         FFileHelper::SaveStringToFile(Result,*FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("InputTest.txt")));
         UE_LOG(LogTPSDuel,Display,TEXT("INPUT_TEST %s"),*Result);
         SmokeExitAt=Now+1; FireReleased();
+        FApp::SetUseFixedTimeStep(false);
     };
     if (SmokeExitAt>0) { if (Now>=SmokeExitAt) FPlatformMisc::RequestExit(false); return true; }
     if (Now-SmokeStart>20) { Report(false,FString::Printf(TEXT("stage=%d timed out"),InputTestStage)); return true; }
@@ -110,7 +112,32 @@ bool ADuelPlayerController::TickInputTest()
         InputKey(EKeys::LeftMouseButton,IE_Released,0.f,false);
         if (Self->GetAmmo()!=InputTestAmmo) { Report(false,TEXT("countdown allowed shooting")); break; }
         State->Phase=EDuelPhase::Waiting;
-        Report(true,TEXT("Slate firstClick/release/menu/resume; R reload; waiting no damage; countdown blocked")); break;
+        Next(); break;
+    case 11:
+    case 13:
+        FApp::SetFixedDeltaTime(InputTestStage==11 ? 1.0/30.0 : 1.0/60.0);
+        FApp::SetUseFixedTimeStep(true);
+        InputTestAmmo=Self->GetAmmo(); InputCadenceStartedAt=GetWorld()->TimeSeconds; InputCadenceFrames=0;
+        InputKey(EKeys::LeftMouseButton,IE_Pressed,1.f,false);
+        Next(); break;
+    case 12:
+    case 14:
+    {
+        if (InputTestStage==14)
+        {
+            const double Steps[]={1.0/120.0,1.0/30.0,1.0/60.0};
+            FApp::SetFixedDeltaTime(Steps[InputCadenceFrames++%3]);
+        }
+        const float Duration=GetWorld()->TimeSeconds-InputCadenceStartedAt;
+        if (Duration<1.f) break;
+        InputKey(EKeys::LeftMouseButton,IE_Released,0.f,false);
+        const int32 Shots=InputTestAmmo-Self->GetAmmo();
+        UE_LOG(LogTPSDuel,Display,TEXT("CADENCE_CHECK mode=%s shots=%d elapsed=%.3f"),InputTestStage==12 ? TEXT("30Hz") : TEXT("variable"),Shots,Duration);
+        if (Shots<12 || Shots>15) { Report(false,TEXT("automatic fire dropped timer shots or bypassed cooldown")); break; }
+        if (InputTestStage==12) Next();
+        else Report(true,TEXT("Slate firstClick/release/menu/resume; R reload; waiting no damage; countdown blocked; 30Hz/variable cadence"));
+        break;
+    }
     }
     return true;
 #else

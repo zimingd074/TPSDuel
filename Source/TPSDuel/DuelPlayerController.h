@@ -65,9 +65,12 @@ private:
     bool MotionJumpSeen = false;
     bool MotionFireRequested = false;
     bool MotionReloadRequested = false;
+    int32 MotionDiagonalStage = -1;
     int32 InputTestStage = 0;
     double InputStageStart = 0;
     int32 InputTestAmmo = 30;
     bool InputReloadSeen = false;
+    float InputCadenceStartedAt = 0.f;
+    int32 InputCadenceFrames = 0;
     TWeakObjectPtr<ADuelCharacter> SmokePawns[2];
 };

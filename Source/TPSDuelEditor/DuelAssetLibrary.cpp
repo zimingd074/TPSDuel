@@ -19,6 +19,7 @@
 #include "K2Node_DynamicCast.h"
 #include "AnimGraphNode_StateMachine.h"
 #include "AnimGraphNode_BlendSpacePlayer.h"
+#include "AnimGraphNode_BlendListByBool.h"
 #include "K2Node_VariableGet.h"
 #include "DuelAnimInstance.h"
 #include "Animation/BlendSpace.h"
@@ -35,6 +36,31 @@ bool UDuelAssetLibrary::ConfigureQuantumLocomotion()
     auto* Blueprint=LoadObject<UAnimBlueprint>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Q_ThirdPerson_AnimBP.Q_ThirdPerson_AnimBP"));
     if (!Blueprint) return false;
     Blueprint->Modify(); Blueprint->ParentClass=UDuelAnimInstance::StaticClass();
+    // Older local assets may contain an experimental template/combat switch.
+    // Restore the single rifle locomotion path before compiling the blueprint.
+    TArray<UEdGraph*> PreviousGraphs; Blueprint->GetAllGraphs(PreviousGraphs);
+    for (auto* Graph : PreviousGraphs)
+        for (auto* Node : TArray<UEdGraphNode*>(Graph->Nodes))
+            if (auto* Select=Cast<UAnimGraphNode_BlendListByBool>(Node))
+            {
+                auto* RiflePin=Select->FindPin(TEXT("BlendPose_0"));
+                auto* Output=Select->FindPin(TEXT("Pose"));
+                if (!RiflePin || RiflePin->LinkedTo.Num()!=1 || !Output) return false;
+                auto* Rifle=Cast<UAnimGraphNode_BlendSpacePlayer>(RiflePin->LinkedTo[0]->GetOwningNode());
+                if (!Rifle) return false;
+                for (auto* Target : TArray<UEdGraphPin*>(Output->LinkedTo))
+                {
+                    Target->BreakAllPinLinks(); Rifle->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Target);
+                }
+                FBlueprintEditorUtils::RemoveNode(Blueprint,Select,true);
+                for (auto* Candidate : TArray<UEdGraphNode*>(Graph->Nodes))
+                {
+                    auto* Getter=Cast<UK2Node_VariableGet>(Candidate);
+                    if ((Cast<UAnimGraphNode_BlendSpacePlayer>(Candidate) && Candidate!=Rifle) ||
+                        (Getter && Getter->VariableReference.GetMemberName()==TEXT("DuelCombatLocomotion")))
+                        FBlueprintEditorUtils::RemoveNode(Blueprint,Candidate,true);
+                }
+            }
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
     FKismetEditorUtilities::CompileBlueprint(Blueprint);
     auto* Combat=LoadObject<UBlendSpace>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/BS_Combat.BS_Combat"));

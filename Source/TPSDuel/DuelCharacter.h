@@ -90,6 +90,8 @@ private:
     bool bLocalTrigger = false;
     bool bMovementAllowed = true;
     float LastShotTime = -100.f;
+    float NextShotTime = -100.f;
+    float NextFeedbackTime = -100.f;
     float LastAimSendTime = -100.f;
     float LastAimReceiveTime = -100.f;
     int32 DisplayedSlot = -2;

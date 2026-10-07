@@ -228,9 +228,9 @@ void ADuelCharacter::Tick(float DeltaSeconds)
     Rifle->SetVisibility(IsAlive(),true);
     const float Pitch = GetVisualAimPitch();
     VisualAimAlpha=FMath::FInterpTo(VisualAimAlpha,bAiming ? 1.f : 0.f,DeltaSeconds,12.f);
-    const FVector LocalVelocity=GetActorRotation().UnrotateVector(GetVelocity());
-    const float Sideways=GetVelocity().Size2D()>10.f ? FMath::Abs(LocalVelocity.Y)/GetVelocity().Size2D() : 0.f;
-    GetCharacterMovement()->MaxWalkSpeed=bAiming ? 120.f : LocalVelocity.X < -20.f ? 220.f : FMath::Lerp(375.f,200.f,Sideways);
+    // CharacterMovement already clamps combined input, including W+A / W+D.
+    // One speed cap for every direction avoids direction-dependent slowdown.
+    GetCharacterMovement()->MaxWalkSpeed=bAiming ? 120.f : 375.f;
     const float CarryTarget=(!bAiming && !IsFiring() && !bReloading) ? FMath::Clamp(GetVelocity().Size2D()/180.f,0.f,1.f) : 0.f;
     VisualCarryAlpha=FMath::FInterpTo(VisualCarryAlpha,CarryTarget,DeltaSeconds,CarryTarget>VisualCarryAlpha ? 8.f : 20.f);
     if (bQuantumCharacter)
@@ -309,8 +309,8 @@ void ADuelCharacter::BeginFire()
     bLocalTrigger = true;
     if (!HasAuthority())
     {
+        NextFeedbackTime=FMath::Max(GetWorld()->TimeSeconds,VisualShotTime+FMath::Max(.05f,GetDefault<UDuelSettings>()->FireInterval));
         LocalFireFeedback();
-        GetWorldTimerManager().SetTimer(FeedbackTimer, this, &ADuelCharacter::LocalFireFeedback, FMath::Max(.05f, GetDefault<UDuelSettings>()->FireInterval), true);
     }
     ServerFireIntent(true, LocalAim());
 }
@@ -335,9 +335,9 @@ void ADuelCharacter::ServerFireIntent_Implementation(bool Pressed, FRotator Aim)
     }
     if (!CanUseWeapon() || bServerTrigger || bReloading || Ammo <= 0 || !AcceptAim(Aim)) return;
     bServerTrigger = true;
+    // A fresh press still observes the last accepted shot's real cooldown.
+    NextShotTime=FMath::Max(GetWorld()->TimeSeconds,LastShotTime+FMath::Max(.05f,GetDefault<UDuelSettings>()->FireInterval));
     FireOnce();
-    if (bServerTrigger)
-        GetWorldTimerManager().SetTimer(FireTimer, this, &ADuelCharacter::FireOnce, FMath::Max(.05f, GetDefault<UDuelSettings>()->FireInterval), true);
 }
 void ADuelCharacter::ServerAim_Implementation(FRotator Aim) { if (CanUseWeapon()) AcceptAim(Aim); }
 void ADuelCharacter::SetAiming(bool Aiming)
@@ -367,7 +367,16 @@ void ADuelCharacter::FireOnce()
         GetWorldTimerManager().ClearTimer(FireTimer);
         return;
     }
-    if (!DuelRules::CanFire(true, true, false, Ammo, GetWorld()->TimeSeconds, LastShotTime, Rules->FireInterval)) return;
+    const float Interval=FMath::Max(.05f,Rules->FireInterval);
+    if (!DuelRules::CanFire(true, true, false, Ammo, GetWorld()->TimeSeconds, NextShotTime-Interval, Interval))
+    {
+        GetWorldTimerManager().SetTimer(FireTimer,this,&ADuelCharacter::FireOnce,FMath::Max(.001f,NextShotTime-GetWorld()->TimeSeconds),false);
+        return;
+    }
+#if !UE_BUILD_SHIPPING
+    if (FParse::Param(FCommandLine::Get(),TEXT("DuelCadenceLog")))
+        UE_LOG(LogTPSDuel,Display,TEXT("FIRE_CADENCE time=%.6f gap=%.6f interval=%.3f"),GetWorld()->TimeSeconds,GetWorld()->TimeSeconds-LastShotTime,Interval);
+#endif
     LastShotTime = GetWorld()->TimeSeconds;
     --Ammo;
     ClearProtection();
@@ -408,13 +417,28 @@ void ADuelCharacter::FireOnce()
         UE_LOG(LogTPSDuel, Display, TEXT("SHOT ammo=%d camera=%s aim=%s muzzleBlocked=%d hit=%s end=%s"), Ammo, *CameraOrigin.ToString(), *ServerAimRotation.ToString(), MuzzleBlocked, *GetNameSafe(Hit.GetActor()), *End.ToString());
 #endif
     ForceNetUpdate();
+    // Preserve the target timeline so frame rounding cannot accumulate into
+    // a slower fire rate. After a long hitch, resume without a catch-up burst.
+    NextShotTime+=Interval;
+    if (NextShotTime<=GetWorld()->TimeSeconds+.0001f) NextShotTime=GetWorld()->TimeSeconds+Interval;
+    if (bServerTrigger)
+        GetWorldTimerManager().SetTimer(FireTimer,this,&ADuelCharacter::FireOnce,FMath::Max(.001f,NextShotTime-GetWorld()->TimeSeconds),false);
 }
 void ADuelCharacter::LocalFireFeedback()
 {
     if (!CanUseWeapon() || bReloading || Ammo <= 0 || !bLocalTrigger) return;
+    const float Interval=FMath::Max(.05f,GetDefault<UDuelSettings>()->FireInterval);
+    if (GetWorld()->TimeSeconds+.0001f<NextFeedbackTime)
+    {
+        GetWorldTimerManager().SetTimer(FeedbackTimer,this,&ADuelCharacter::LocalFireFeedback,FMath::Max(.001f,NextFeedbackTime-GetWorld()->TimeSeconds),false);
+        return;
+    }
     VisualShotTime=GetWorld()->TimeSeconds;
     if (FireSound) UGameplayStatics::PlaySound2D(this, FireSound, .4f);
     if (Controller) AddControllerPitchInput(-.15f);
+    NextFeedbackTime+=Interval;
+    if (NextFeedbackTime<=GetWorld()->TimeSeconds+.0001f) NextFeedbackTime=GetWorld()->TimeSeconds+Interval;
+    GetWorldTimerManager().SetTimer(FeedbackTimer,this,&ADuelCharacter::LocalFireFeedback,FMath::Max(.001f,NextFeedbackTime-GetWorld()->TimeSeconds),false);
 }
 void ADuelCharacter::MulticastShot_Implementation(FVector_NetQuantize Start, FVector_NetQuantize End)
 {

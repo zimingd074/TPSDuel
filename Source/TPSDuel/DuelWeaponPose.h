@@ -19,12 +19,12 @@ struct FDuelWeaponPose
         const float Tilt = Reload >= 0.f ? FMath::Sin(PI * Reload) : 0.f;
         const FQuat Ready = FQuat(FVector::ForwardVector, FMath::DegreesToRadians(Pitch * (1.f - Tilt) + Kick * 3.f - Tilt * 20.f))
             * FQuat(FVector::UpVector, FMath::DegreesToRadians(Tilt * 18.f));
-        // Stock at the right waist, muzzle diagonally across the chest toward
-        // the left shoulder. Both hands follow this same transform.
-        const FQuat Running=FQuat(FVector::UpVector,FMath::DegreesToRadians(-55.f))
-            * FQuat(FVector::ForwardVector,FMath::DegreesToRadians(35.f));
+        // Low ready while moving: stock near the chest, muzzle diagonally down.
+        // Both hands follow this transform; aim/fire/reload leave this stance.
+        const FQuat Running=FQuat(FVector::UpVector,FMath::DegreesToRadians(-40.f))
+            * FQuat(FVector::ForwardVector,FMath::DegreesToRadians(-32.f));
         const FQuat Rotation=FQuat::Slerp(Ready,Running,FMath::Clamp(Carry,0.f,1.f));
-        const FVector Grip=FMath::Lerp(FMath::Lerp(FVector(-9,12,133),FVector(-7,13,142),Aim)+FVector(0,-Kick*2.f,-Tilt*12.f),FVector(-17,30,118),Carry);
+        const FVector Grip=FMath::Lerp(FMath::Lerp(FVector(-9,12,133),FVector(-7,13,142),Aim)+FVector(0,-Kick*2.f,-Tilt*12.f),FVector(-13,23,132),Carry);
         Pose.Gun = FTransform(Rotation, Grip);
         Pose.RightHand = Pose.Gun.TransformPosition(FVector(0,-4,1));
         const FVector Support = Pose.Gun.TransformPosition(FVector(6,30,9));

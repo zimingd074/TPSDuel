@@ -19,7 +19,11 @@ void UDuelAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
     if (!Character) return;
     const FVector Local=Character->GetActorRotation().UnrotateVector(Character->GetVelocity());
     DuelLocomotionRate=bDedicatedLocomotion ? 1.f : (Local.X < -20.f ? -1.f : 1.f);
-    if (Local.SizeSquared2D()>100.f) DuelDirection=FMath::RadiansToDegrees(FMath::Atan2(Local.Y,Local.X));
+    if (Local.SizeSquared2D()>100.f)
+    {
+        const float Target=FMath::RadiansToDegrees(FMath::Atan2(Local.Y,Local.X));
+        DuelDirection=FMath::UnwindDegrees(FMath::FixedTurn(DuelDirection,Target,720.f*DeltaSeconds));
+    }
     if (!bDedicatedLocomotion) return;
     const float Progress=Character->GetReloadProgress();
     const bool ReloadActive=Progress>=0.f;

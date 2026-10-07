@@ -24,4 +24,5 @@ private:
     FDuelWeaponPose Weapon=FDuelWeaponPose::Calculate(0.f,0.f,-1.f,0.f);
     float Carry = 0.f;
     float LegYaw = 0.f;
+    float StrideScale = 1.f;
 };

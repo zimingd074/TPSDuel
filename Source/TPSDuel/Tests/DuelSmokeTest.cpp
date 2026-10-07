@@ -74,6 +74,21 @@ void ADuelPlayerController::TickSmokeTest()
         {
             InputKey(EKeys::R,IE_Pressed,1.f,false); InputKey(EKeys::R,IE_Released,0.f,false); MotionReloadRequested=true;
         }
+        if (Time>=18.6f && Time<23.4f)
+        {
+            const int32 Stage=FMath::FloorToInt((Time-18.6f)/1.2f);
+            if (Stage!=MotionDiagonalStage)
+            {
+                MotionDiagonalStage=Stage;
+                Runner->GetCharacterMovement()->StopMovementImmediately();
+                Runner->SetActorLocation(FVector(-1350,0,90),false,nullptr,ETeleportType::TeleportPhysics);
+            }
+            if (Time-18.6f-Stage*1.2f<.9f)
+            {
+                Runner->MoveForward(Stage<2 ? 1.f : -1.f);
+                Runner->MoveRight(Stage%2==0 ? 1.f : -1.f);
+            }
+        }
         const float Speed=Runner->GetVelocity().Size2D();
         MotionMaximumSpeed=FMath::Max(MotionMaximumSpeed,Speed);
         MotionJumpSeen |= Runner->GetCharacterMovement()->IsFalling() && Time>8.6f;
@@ -83,7 +98,7 @@ void ADuelPlayerController::TickSmokeTest()
             if (!MotionLastFoot.IsZero()) MotionFootTravel+=FVector::Dist(MotionLastFoot,Foot);
             MotionLastFoot=Foot;
         }
-        const float SampleTimes[]={2.45f,2.52f,2.59f,2.66f,2.73f,2.80f,2.87f,2.94f,3.65f,4.4f,6.f,7.6f,9.f,10.8f,12.8f,13.8f,15.2f,16.8f};
+        const float SampleTimes[]={2.45f,2.52f,2.59f,2.66f,2.73f,2.80f,2.87f,2.94f,3.65f,4.4f,6.f,7.6f,9.f,10.8f,12.8f,13.8f,15.2f,16.8f,19.2f,20.4f,21.6f,22.8f};
         if (MotionSample<UE_ARRAY_COUNT(SampleTimes) && Time>=SampleTimes[MotionSample])
         {
             float AnimSpeed=-1.f;
@@ -98,7 +113,7 @@ void ADuelPlayerController::TickSmokeTest()
             FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),FString::Printf(TEXT("Motion-%02d.png"),MotionSample)),true,false);
             ++MotionSample;
         }
-        if (Time>18.f && SmokeExitAt==0)
+        if (Time>24.f && SmokeExitAt==0)
         {
             const bool Passed=MotionFootTravel>50.f && MotionMaximumSpeed>350.f && MotionJumpSeen && MotionSample==UE_ARRAY_COUNT(SampleTimes) && MotionFireRequested && MotionReloadRequested && Runner->GetAmmo()==30 && !Runner->IsReloading();
             const FString Result=FString::Printf(TEXT("%s footTravel=%.2fcm maximumSpeed=%.2f jump=%d frames=%d"),Passed ? TEXT("PASS") : TEXT("FAIL"),MotionFootTravel,MotionMaximumSpeed,MotionJumpSeen,MotionSample);
