@@ -40,8 +40,15 @@ bool ADuelPlayerController::TickInputTest()
         FApp::SetUseFixedTimeStep(false);
     };
     if (SmokeExitAt>0) { if (Now>=SmokeExitAt) FPlatformMisc::RequestExit(false); return true; }
-    if (Now-SmokeStart>35) { Report(false,FString::Printf(TEXT("stage=%d timed out"),InputTestStage)); return true; }
+    if (Now-SmokeStart>45) { Report(false,FString::Printf(TEXT("stage=%d timed out"),InputTestStage)); return true; }
     auto Next=[this,Now]() { ++InputTestStage; InputStageStart=Now; };
+    auto Facing=[&](const TCHAR* Name,float Yaw,float Speed)
+    {
+        const float ActorYaw=FMath::UnwindDegrees(Self->GetActorRotation().Yaw);
+        UE_LOG(LogTPSDuel,Display,TEXT("FACING_CHECK name=%s yaw=%.2f viewYaw=%.2f speed=%.2f"),Name,ActorYaw,FMath::UnwindDegrees(GetControlRotation().Yaw),Self->GetVelocity().Size2D());
+        return FMath::Abs(FMath::FindDeltaAngleDegrees(Yaw,ActorYaw))<3.f &&
+            FMath::Abs(FMath::UnwindDegrees(GetControlRotation().Yaw))<1.f && FMath::Abs(Self->GetVelocity().Size2D()-Speed)<5.f;
+    };
     auto Key=[this](FKey Value) { InputKey(Value,IE_Pressed,1.f,false); InputKey(Value,IE_Released,0.f,false); };
     auto Mouse=[this](bool Pressed)
     {
@@ -208,8 +215,41 @@ bool ADuelPlayerController::TickInputTest()
         if (Elapsed<.3) break;
         if (Self->bIsCrouched || FMath::Abs(Self->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()-88.f)>1.f) { Report(false,TEXT("did not stand after ceiling cleared")); break; }
         UE_LOG(LogTPSDuel,Display,TEXT("STANCE_CHECK menuClear=1 ceilingBlocked=1 ceilingRelease=1"));
-        Report(true,TEXT("Slate mouse/menu/reload/cadence; Ctrl/Shift speeds 80/120/150/375; crouch grip/capsule; menu clear; low-ceiling stand protection"));
-        break;
+        Self->GetCharacterMovement()->StopMovementImmediately();
+        Self->SetActorLocation(FVector(-700,0,90),false,nullptr,ETeleportType::TeleportPhysics);
+        SetControlRotation(FRotator::ZeroRotator);
+        InputKey(EKeys::W,IE_Pressed,1.f,false); InputKey(EKeys::A,IE_Pressed,1.f,false); Next(); break;
+    case 24:
+        if(Elapsed<.5) break;
+        if(!Facing(TEXT("W+A"),-45,375)) { Report(false,TEXT("W+A did not face left-forward")); break; }
+        InputKey(EKeys::A,IE_Released,0.f,false); InputKey(EKeys::D,IE_Pressed,1.f,false); Next(); break;
+    case 25:
+        if(Elapsed<.5) break;
+        if(!Facing(TEXT("W+D"),45,375)) { Report(false,TEXT("W+D did not face right-forward")); break; }
+        InputKey(EKeys::RightMouseButton,IE_Pressed,1.f,false); Next(); break;
+    case 26:
+        if(Elapsed<.4) break;
+        if(!Self->IsAiming() || !Facing(TEXT("W+D+Aim"),0,120)) { Report(false,TEXT("aiming did not face the crosshair")); break; }
+        InputKey(EKeys::RightMouseButton,IE_Released,0.f,false); InputKey(EKeys::LeftMouseButton,IE_Pressed,1.f,false); Next(); break;
+    case 27:
+        if(Elapsed<.4) break;
+        if(!Self->IsFiring() || Self->GetAmmo()>=30 || !Facing(TEXT("W+D+Fire"),0,375)) { Report(false,TEXT("moving fire did not face the crosshair")); break; }
+        InputKey(EKeys::LeftMouseButton,IE_Released,0.f,false); InputKey(EKeys::D,IE_Released,0.f,false);
+        InputKey(EKeys::A,IE_Pressed,1.f,false); Next(); break;
+    case 28:
+        if(Elapsed<.5) break;
+        if(!Facing(TEXT("W+A after fire"),-45,375)) { Report(false,TEXT("fire release did not restore movement facing")); break; }
+        InputKey(EKeys::W,IE_Released,0.f,false); InputKey(EKeys::A,IE_Released,0.f,false); InputKey(EKeys::S,IE_Pressed,1.f,false); Next(); break;
+    case 29:
+        if(Elapsed<.5) break;
+        if(!Facing(TEXT("S after diagonal"),0,375) || Self->GetVelocity().X>-350.f) { Report(false,TEXT("backward did not return to camera facing")); break; }
+        InputKey(EKeys::S,IE_Released,0.f,false); InputKey(EKeys::LeftControl,IE_Pressed,1.f,false); InputKey(EKeys::LeftShift,IE_Pressed,1.f,false);
+        InputKey(EKeys::W,IE_Pressed,1.f,false); InputKey(EKeys::D,IE_Pressed,1.f,false); Next(); break;
+    case 30:
+        if(Elapsed<.5) break;
+        if(!Self->bIsCrouched || !Self->IsSlowWalking() || !Facing(TEXT("CrouchQuiet W+D"),45,80)) { Report(false,TEXT("crouch quiet facing failed")); break; }
+        InputKey(EKeys::W,IE_Released,0.f,false); InputKey(EKeys::D,IE_Released,0.f,false); InputKey(EKeys::LeftControl,IE_Released,0.f,false); InputKey(EKeys::LeftShift,IE_Released,0.f,false);
+        Report(true,TEXT("mouse/menu/reload/cadence; Ctrl/Shift and ceiling; W+A/W+D turn; S faces camera; aim/fire face crosshair; crouch quiet turn")); break;
     }
     return true;
 #else

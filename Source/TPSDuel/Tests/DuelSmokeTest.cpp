@@ -112,6 +112,7 @@ void ADuelPlayerController::TickSmokeTest()
             const FVector GunDirection=Pose.Gun.GetRotation().GetAxisY();
             UE_LOG(LogTPSDuel,Display,TEXT("MOTION_SAMPLE frame=%d speed=%.2f animSpeed=%.2f foot=%s gripError=%.2f carry=%.3f rate=%.1f gunDirection=%s ammo=%d reload=%.2f"),MotionSample,Speed,AnimSpeed,*Foot.ToString(),GripError,Runner->GetVisualCarryAlpha(),Instance ? Instance->DuelLocomotionRate : 0.f,*GunDirection.ToString(),Runner->GetAmmo(),Runner->GetReloadProgress());
             UE_LOG(LogTPSDuel,Display,TEXT("COMBAT_SAMPLE frame=%d dedicated=%d direction=%.1f action=%s"),MotionSample,Instance && Instance->bDedicatedLocomotion,Instance ? Instance->DuelDirection : 0.f,Instance ? *GetNameSafe(Instance->GetCurrentActiveMontage()) : TEXT("None"));
+            UE_LOG(LogTPSDuel,Display,TEXT("FACING_SAMPLE frame=%d yaw=%.2f viewYaw=%.2f velocityYaw=%.2f"),MotionSample,FMath::UnwindDegrees(Runner->GetActorRotation().Yaw),FMath::UnwindDegrees(GetControlRotation().Yaw),FMath::UnwindDegrees(Runner->GetVelocity().Rotation().Yaw));
             FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),FString::Printf(TEXT("Motion-%02d.png"),MotionSample)),true,false);
             ++MotionSample;
         }
@@ -181,6 +182,8 @@ void ADuelPlayerController::TickSmokeTest()
     }
     FString TestRole;
     if (!FParse::Value(FCommandLine::Get(), TEXT("DuelSmoke="), TestRole) || (TestRole != TEXT("Host") && TestRole != TEXT("Client"))) return;
+    const bool CheckFacing=FParse::Param(FCommandLine::Get(),TEXT("DuelSmokeFacing"));
+    const double StanceLength=CheckFacing ? 5.4 : 3.0;
     const double Now = FPlatformTime::Seconds();
     if (SmokeStart == 0) SmokeStart = Now;
     if (SmokeExitAt > 0)
@@ -232,8 +235,8 @@ void ADuelPlayerController::TickSmokeTest()
     {
         FireReleased();
         if (Now - SmokeFinishSeen >= 1)
-            Report(State->Phase == EDuelPhase::Finished && State->WinnerSlot == 0 && Blue == 3 && Red == 1 && SmokeReloadSeen && SmokeQuietSeen && SmokeCrouchSeen,
-                FString::Printf(TEXT("BLUE=%d RED=%d WINNER=%d"), Blue, Red, State->WinnerSlot));
+            Report(State->Phase == EDuelPhase::Finished && State->WinnerSlot == 0 && Blue == 3 && Red == 1 && SmokeReloadSeen && SmokeQuietSeen && SmokeCrouchSeen && (!CheckFacing || (SmokeForwardFacingSeen && SmokeBackwardFacingSeen)),
+                FString::Printf(TEXT("BLUE=%d RED=%d WINNER=%d reload=%d quiet=%d crouch=%d diagonal=%d backward=%d"), Blue, Red, State->WinnerSlot,SmokeReloadSeen,SmokeQuietSeen,SmokeCrouchSeen,SmokeForwardFacingSeen,SmokeBackwardFacingSeen));
         return;
     }
     if (State->Phase != EDuelPhase::Playing) return;
@@ -251,10 +254,14 @@ void ADuelPlayerController::TickSmokeTest()
         }
     }
     ADuelCharacter* Self = Cast<ADuelCharacter>(GetPawn());
-    if (Self && SmokeStanceStart>0 && Now-SmokeStanceStart>=3.0 && FParse::Param(FCommandLine::Get(),TEXT("DuelSmokeCrouch"))) Self->SetCrouching(true);
+    if (Self && SmokeStanceStart>0 && Now-SmokeStanceStart>=StanceLength && FParse::Param(FCommandLine::Get(),TEXT("DuelSmokeCrouch"))) Self->SetCrouching(true);
     const ADuelPlayerState* MyState = GetPlayerState<ADuelPlayerState>();
-    if (Self && MyState && SmokeStanceStart==0) SmokeStanceStart=Now;
-    if (Self && SmokeStanceStart>0 && Now-SmokeStanceStart<3.0)
+    if (Self && MyState && SmokeStanceStart==0)
+    {
+        SmokeStanceStart=Now;
+        if (CheckFacing) SetControlRotation(FRotator(0,MyState->Slot==0 ? 0 : 180,0));
+    }
+    if (Self && SmokeStanceStart>0 && Now-SmokeStanceStart<StanceLength)
     {
         const double StanceTime=Now-SmokeStanceStart;
         for (TActorIterator<ADuelCharacter> It(GetWorld()); It; ++It)
@@ -265,10 +272,29 @@ void ADuelPlayerController::TickSmokeTest()
                 if (Quiet && !SmokeQuietSeen) UE_LOG(LogTPSDuel,Display,TEXT("STANCE_SYNC role=%s remoteQuiet=1 speed=%.2f"),*TestRole,It->GetVelocity().Size2D());
                 if (Crouched && !SmokeCrouchSeen) UE_LOG(LogTPSDuel,Display,TEXT("STANCE_SYNC role=%s remoteCrouch=1 capsule=%.1f"),*TestRole,It->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight());
                 SmokeQuietSeen |= Quiet; SmokeCrouchSeen |= Crouched;
+                if (CheckFacing)
+                {
+                    const ADuelPlayerState* OtherState=It->GetPlayerState<ADuelPlayerState>();
+                    if (OtherState && OtherState->Slot>=0 && OtherState->Slot<=1)
+                    {
+                        const float ViewYaw=OtherState->Slot==0 ? 0.f : 180.f;
+                        const float RelativeYaw=FMath::FindDeltaAngleDegrees(ViewYaw,It->GetActorRotation().Yaw);
+                        const bool Diagonal=FMath::Abs(RelativeYaw-45.f)<5.f && It->GetVelocity().Size2D()>300.f;
+                        const bool Backward=FMath::Abs(RelativeYaw)<5.f && FVector::DotProduct(It->GetVelocity(),FRotator(0,ViewYaw,0).Vector()) < -300.f;
+                        if (Diagonal && !SmokeForwardFacingSeen) UE_LOG(LogTPSDuel,Display,TEXT("FACING_SYNC role=%s remoteDiagonal=1 yaw=%.2f"),*TestRole,RelativeYaw);
+                        if (Backward && !SmokeBackwardFacingSeen) UE_LOG(LogTPSDuel,Display,TEXT("FACING_SYNC role=%s remoteBackward=1 yaw=%.2f"),*TestRole,RelativeYaw);
+                        SmokeForwardFacingSeen |= Diagonal; SmokeBackwardFacingSeen |= Backward;
+                    }
+                }
             }
         if (StanceTime<1.2) { WalkPressed(); Self->MoveForward(1.f); }
         else if (StanceTime<2.4) { WalkReleased(); CrouchPressed(); Self->MoveForward(1.f); }
-        else { WalkReleased(); CrouchReleased(); }
+        else
+        {
+            WalkReleased(); CrouchReleased();
+            if (CheckFacing && StanceTime>=3.0 && StanceTime<4.2) { Self->MoveForward(1.f); Self->MoveRight(1.f); }
+            else if (CheckFacing && StanceTime>=4.2) Self->MoveForward(-1.f);
+        }
         return;
     }
     static double LastDiagnostic = 0;

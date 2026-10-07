@@ -40,8 +40,9 @@ ADuelCharacter::ADuelCharacter(const FObjectInitializer& ObjectInitializer)
     PrimaryActorTick.bCanEverTick = true;
     GetCapsuleComponent()->InitCapsuleSize(42.f, 88.f);
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-    bUseControllerRotationYaw = true;
-    GetCharacterMovement()->bOrientRotationToMovement = false;
+    bUseControllerRotationYaw = false;
+    GetCharacterMovement()->bOrientRotationToMovement = true;
+    GetCharacterMovement()->RotationRate=FRotator(0,540,0);
     // Match the imported locomotion blend space's full run sample (cm/s).
     GetCharacterMovement()->MaxWalkSpeed = 375.f;
     GetCharacterMovement()->MaxAcceleration = 1400.f;
@@ -350,6 +351,7 @@ void ADuelCharacter::BeginFire()
 {
     if (!IsLocallyControlled() || bLocalTrigger || !CanUseWeapon() || bReloading || Ammo <= 0) return;
     bLocalTrigger = true;
+    RefreshCombatFacing();
     if (!HasAuthority())
     {
         NextFeedbackTime=FMath::Max(GetWorld()->TimeSeconds,VisualShotTime+FMath::Max(.05f,GetDefault<UDuelSettings>()->FireInterval));
@@ -361,6 +363,7 @@ void ADuelCharacter::EndFire()
 {
     if (!bLocalTrigger) return;
     bLocalTrigger = false;
+    RefreshCombatFacing();
     GetWorldTimerManager().ClearTimer(FeedbackTimer);
     ServerFireIntent(false, LocalAim());
 }
@@ -373,11 +376,13 @@ void ADuelCharacter::ServerFireIntent_Implementation(bool Pressed, FRotator Aim)
     if (!Pressed)
     {
         bServerTrigger = false;
+        RefreshCombatFacing();
         GetWorldTimerManager().ClearTimer(FireTimer);
         return;
     }
     if (!CanUseWeapon() || bServerTrigger || bReloading || Ammo <= 0 || !AcceptAim(Aim)) return;
     bServerTrigger = true;
+    RefreshCombatFacing();
     // A fresh press still observes the last accepted shot's real cooldown.
     NextShotTime=FMath::Max(GetWorld()->TimeSeconds,LastShotTime+FMath::Max(.05f,GetDefault<UDuelSettings>()->FireInterval));
     FireOnce();
@@ -387,9 +392,16 @@ void ADuelCharacter::SetAiming(bool Aiming)
 {
     if (!IsLocallyControlled()) return;
     bAiming = Aiming && IsAlive();
+    RefreshCombatFacing();
     ServerSetAiming(bAiming);
 }
-void ADuelCharacter::ServerSetAiming_Implementation(bool Aiming) { bAiming = Aiming && IsAlive(); }
+void ADuelCharacter::ServerSetAiming_Implementation(bool Aiming) { bAiming = Aiming && IsAlive(); RefreshCombatFacing(); }
+void ADuelCharacter::RefreshCombatFacing()
+{
+    auto* Movement=CastChecked<UDuelCharacterMovement>(GetCharacterMovement());
+    Movement->bWantsCombatFacing=(bAiming || IsFiring()) && CanMove();
+    if (Movement->bWantsCombatFacing) Movement->PhysicsRotation(0.f);
+}
 
 void ADuelCharacter::ComputeShotView(FVector& Origin, FVector& Direction) const
 {
@@ -528,6 +540,7 @@ void ADuelCharacter::StopCombat()
     bLocalTrigger = false;
     bReloading = false;
     bAiming = false;
+    CastChecked<UDuelCharacterMovement>(GetCharacterMovement())->bWantsCombatFacing=false;
     GetWorldTimerManager().ClearTimer(FireTimer);
     GetWorldTimerManager().ClearTimer(FeedbackTimer);
     GetWorldTimerManager().ClearTimer(ReloadTimer);

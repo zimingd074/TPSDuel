@@ -12,6 +12,7 @@ UE4.27.2 C++ 的 1v1 第三人称射击局域网原型，工程位于 `D:\TPSDue
 - [真实感升级计划](docs/真实感升级计划.md)
 - [Ctrl 下蹲与 Shift 静步](docs/下蹲与静步.md)
 - [蹲姿射击与枪械穿模修复](docs/蹲姿射击与穿模修复.md)
+- [移动朝向优化](docs/移动朝向优化.md)
 
 打开 `TPSDuel.uproject` 进行开发。PC 双窗口测试执行 `powershell -ExecutionPolicy Bypass -File D:\TPSDuel\tools\RunLocalDuel.ps1`，第二个窗口输入 `127.0.0.1:7777` 加入。
 
@@ -26,3 +27,5 @@ v0.5.3 增加按住 Ctrl 下蹲、Shift 静步以及手机 CROUCH / WALK 按钮�
 v0.5.4 修正蹲姿射击手肘过高，持枪跟随实际肩部，加入枪托支点、大角度瞄准避让和近掩体收枪；详见 [蹲姿射击与穿模修复](docs/蹲姿射击与穿模修复.md)。
 
 v0.5.0 接入 Quantum 完整人物 / 步枪 PBR、真实 HDRI、锈钢与磨损细节、Factory 工业设施，以及 Animation Starter Pack 持枪方向移动和上半身射击 / 换弹；动作使用共享 IK 同步枪、双手与弹匣。Fab 源资产和派生内容保留本地，复现需自行领取资源；具体范围与许可见 [资源来源](docs/资源来源.md)。
+
+v0.5.5 调整移动朝向：普通前斜方向移动转身，S 回到镜头前向倒退，瞄准 / 开火面向准星。保留原有持枪动作、速度与蹲姿修复，详见 [移动朝向优化](docs/移动朝向优化.md)。

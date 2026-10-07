@@ -88,6 +88,7 @@ private:
     void ClearProtection();
     void LocalFireFeedback();
     void RefreshMovement();
+    void RefreshCombatFacing();
     void UpdateWeaponAfterAnimation();
     void ComputeShotView(FVector& Origin, FVector& Direction) const;
     FRotator LocalAim() const;

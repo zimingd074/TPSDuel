@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskRuntime=Join-Path $taskRoot 'Builds\Windows\WindowsNoEditor\TPSDuel'
 $taskExe=Join-Path $taskRuntime 'Binaries\Win64\TPSDuel.exe'
-$taskLog=Join-Path $taskRoot 'Saved\locomotion-v054.log'
+$taskLog=Join-Path $taskRoot 'Saved\locomotion-v055.log'
 $taskResult=Join-Path $taskRuntime 'Saved\MotionTest.txt'
 if(-not(Test-Path -LiteralPath $taskExe)){throw 'Package Windows first.'}
 if(Test-Path -LiteralPath $taskResult){Remove-Item -LiteralPath $taskResult}
@@ -48,16 +48,29 @@ try {
         if($taskSample.Line -notmatch 'frame=(\d+) dedicated=1 direction=([-\d.]+) action=(.*)$'){throw 'Dedicated animation graph was not active.'}
         $taskIndex=[int]$Matches[1]; $taskDirection=[double]::Parse($Matches[2],[Globalization.CultureInfo]::InvariantCulture); $taskAction=$Matches[3]
         if($taskIndex -eq 9 -and [Math]::Abs($taskDirection) -lt 170){throw 'Backward sample did not select backward direction.'}
-        if($taskIndex -eq 10 -and [Math]::Abs($taskDirection-90) -gt 10){throw 'Right strafe direction incorrect.'}
-        if($taskIndex -eq 11 -and [Math]::Abs($taskDirection+90) -gt 10){throw 'Left strafe direction incorrect.'}
+        if($taskIndex -in @(10,11) -and [Math]::Abs($taskDirection) -gt 10){throw 'Sideways travel did not turn to a forward stride.'}
         if($taskIndex -ge 18){
-            $taskExpectedDirection=@(45,-45,135,-135)[$taskIndex-18]
+            $taskExpectedDirection=@(0,0,135,-135)[$taskIndex-18]
             if([Math]::Abs($taskDirection-$taskExpectedDirection) -gt 5){throw 'Diagonal animation direction incorrect.'}
         }
         if($taskIndex -in @(15,16) -and $taskAction -eq 'None'){throw 'Fire/reload animation was not active.'}
     }
+    $taskFacingSamples=@(Select-String -LiteralPath $taskLog -Pattern 'FACING_SAMPLE')
+    if($taskFacingSamples.Count -ne 22){throw 'Missing movement facing evidence.'}
+    foreach($taskSample in $taskFacingSamples){
+        if($taskSample.Line -notmatch 'frame=(\d+) yaw=([-\d.]+) viewYaw=([-\d.]+)'){throw 'Invalid facing sample.'}
+        $taskIndex=[int]$Matches[1]; $taskYaw=[double]::Parse($Matches[2],[Globalization.CultureInfo]::InvariantCulture)
+        $taskViewYaw=[double]::Parse($Matches[3],[Globalization.CultureInfo]::InvariantCulture)
+        $taskExpectedYaw=0
+        if($taskIndex -eq 10){$taskExpectedYaw=90}
+        if($taskIndex -eq 11){$taskExpectedYaw=-90}
+        if($taskIndex -eq 18){$taskExpectedYaw=45}
+        if($taskIndex -eq 19){$taskExpectedYaw=-45}
+        if([Math]::Abs($taskYaw-$taskExpectedYaw) -gt 5){throw "Unexpected actor facing at frame $taskIndex"}
+        if([Math]::Abs($taskViewYaw) -gt 1){throw 'Movement turned the camera.'}
+    }
     if(-not $NullRHI){
-        $taskOutput=Join-Path $taskRoot 'docs\screenshots\locomotion-v0.5.4'
+        $taskOutput=Join-Path $taskRoot 'docs\screenshots\locomotion-v0.5.5'
         New-Item -ItemType Directory -Path $taskOutput -Force | Out-Null
         # Windows image previews may map existing PNGs and prevent truncation.
         # Preserve the previous capture, then publish a fresh file at its path.

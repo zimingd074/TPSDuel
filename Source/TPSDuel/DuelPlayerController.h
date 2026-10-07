@@ -65,6 +65,8 @@ private:
     double SmokeStanceStart = 0;
     bool SmokeQuietSeen = false;
     bool SmokeCrouchSeen = false;
+    bool SmokeForwardFacingSeen = false;
+    bool SmokeBackwardFacingSeen = false;
     bool SmokePreviewCamera = false;
     int32 MotionSample = 0;
     FVector MotionLastFoot = FVector::ZeroVector;
