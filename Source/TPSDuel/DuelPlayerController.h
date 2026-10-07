@@ -32,6 +32,10 @@ public:
     void ReloadPressed();
     void JumpPressed();
     void JumpReleased();
+    void CrouchPressed();
+    void CrouchReleased();
+    void WalkPressed();
+    void WalkReleased();
     UFUNCTION(Client, Unreliable) void ClientHitConfirmed();
     float GetHitTime() const { return HitTime; }
 private:
@@ -57,6 +61,9 @@ private:
     double SmokeExitAt = 0;
     bool SmokeReloadRequested = false;
     bool SmokeReloadSeen = false;
+    double SmokeStanceStart = 0;
+    bool SmokeQuietSeen = false;
+    bool SmokeCrouchSeen = false;
     bool SmokePreviewCamera = false;
     int32 MotionSample = 0;
     FVector MotionLastFoot = FVector::ZeroVector;
@@ -70,6 +77,7 @@ private:
     double InputStageStart = 0;
     int32 InputTestAmmo = 30;
     bool InputReloadSeen = false;
+    TWeakObjectPtr<AActor> InputTestCeiling;
     float InputCadenceStartedAt = 0.f;
     int32 InputCadenceFrames = 0;
     TWeakObjectPtr<ADuelCharacter> SmokePawns[2];

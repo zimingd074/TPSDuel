@@ -18,6 +18,7 @@ void UDuelAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
     auto* Character=Cast<ADuelCharacter>(TryGetPawnOwner());
     if (!Character) return;
     const FVector Local=Character->GetActorRotation().UnrotateVector(Character->GetVelocity());
+    DuelCrouched=Character->bIsCrouched;
     DuelLocomotionRate=bDedicatedLocomotion ? 1.f : (Local.X < -20.f ? -1.f : 1.f);
     if (Local.SizeSquared2D()>100.f)
     {

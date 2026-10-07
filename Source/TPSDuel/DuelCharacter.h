@@ -15,7 +15,7 @@ class TPSDUEL_API ADuelCharacter : public ACharacter
 {
     GENERATED_BODY()
 public:
-    ADuelCharacter();
+    ADuelCharacter(const FObjectInitializer& ObjectInitializer=FObjectInitializer::Get());
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
@@ -24,6 +24,10 @@ public:
 
     void MoveForward(float Value);
     void MoveRight(float Value);
+    void SetCrouching(bool Pressed);
+    void SetSlowWalking(bool Pressed);
+    bool IsSlowWalking() const;
+    void SyncSlowWalking(bool Pressed);
     void BeginFire();
     void EndFire();
     void SetAiming(bool Aiming);
@@ -67,6 +71,7 @@ protected:
     UPROPERTY(Replicated) float ReloadStartedAt = -1.f;
     UPROPERTY(Replicated) bool bProtected = false;
     UPROPERTY(Replicated) bool bAiming = false;
+    UPROPERTY(Replicated) bool bSlowWalking = false;
     UPROPERTY(Replicated) bool bServerTrigger = false;
 
     UFUNCTION() void OnRep_Health();

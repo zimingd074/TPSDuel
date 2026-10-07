@@ -183,7 +183,10 @@ void SDuelOverlay::Construct(const FArguments& Args)
                 + SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(28,24))
                 [SNew(SVerticalBox).Visibility(this,&SDuelOverlay::GameVisibility)
                     + SVerticalBox::Slot().AutoHeight()[Text(TEXT("DEPOT 07"),20)]
-                    + SVerticalBox::Slot().AutoHeight().Padding(FMargin(0,5))[Text(TEXT("WAREHOUSE / 1V1"),11,Muted)]]
+                    + SVerticalBox::Slot().AutoHeight().Padding(FMargin(0,5))[Text(TEXT("WAREHOUSE / 1V1"),11,Muted)]
+                    + SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text_Lambda([this](){const auto* C=Owner.IsValid() ? Cast<ADuelCharacter>(Owner->GetPawn()) : nullptr;
+                        return FText::FromString(C && C->bIsCrouched ? (C->IsSlowWalking() ? TEXT("CROUCH / QUIET") : TEXT("CROUCH")) : C && C->IsSlowWalking() ? TEXT("QUIET WALK") : TEXT(""));})
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold",11)).ColorAndOpacity(Gold)]]
                 + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(FMargin(0,22))
                 [SNew(SVerticalBox).Visibility_Lambda([this](){return Owner.IsValid() && !Owner->IsFrontEnd() ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed;})
                     + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
@@ -228,10 +231,14 @@ void SDuelOverlay::Construct(const FArguments& Args)
                                 return FCoreStyle::GetDefaultFontStyle("Bold",C && C->IsReloading() ? 18 : 30);}).ColorAndOpacity(FLinearColor::White)]]]]
                 + SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(FMargin(0,28))
                 [SNew(STextBlock).Visibility(this,&SDuelOverlay::GameVisibility).Text_Lambda([this](){return FText::FromString(Owner.IsValid() && Owner->WantsTouch() ?
-                    TEXT("LEFT: MOVE   /   RIGHT: LOOK") : TEXT("WASD  MOVE    LMB  FIRE    RMB  AIM    R  RELOAD    SPACE  JUMP"));})
+                    TEXT("LEFT: MOVE   /   RIGHT: LOOK") : TEXT("WASD MOVE   LMB FIRE   RMB AIM   R RELOAD   SPACE JUMP   CTRL CROUCH   SHIFT WALK"));})
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular",11)).ColorAndOpacity(Muted)]
                 + SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(FMargin(28,126))
                 [SNew(SHorizontalBox).Visibility(this,&SDuelOverlay::TouchVisibility)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Bottom).Padding(5)
+                    [SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight().Padding(FMargin(0,0,0,10))[Action(TEXT("CROUCH"),&ADuelPlayerController::CrouchPressed,&ADuelPlayerController::CrouchReleased)]
+                        + SVerticalBox::Slot().AutoHeight()[Action(TEXT("WALK"),&ADuelPlayerController::WalkPressed,&ADuelPlayerController::WalkReleased)]]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Bottom).Padding(5)[Action(TEXT("JUMP"),&ADuelPlayerController::JumpPressed,&ADuelPlayerController::JumpReleased)]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Bottom).Padding(5)[Action(TEXT("RELOAD"),&ADuelPlayerController::ReloadPressed,nullptr)]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Bottom).Padding(5)[Action(TEXT("AIM"),&ADuelPlayerController::AimPressed,&ADuelPlayerController::AimReleased)]

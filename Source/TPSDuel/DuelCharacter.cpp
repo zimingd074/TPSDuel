@@ -1,6 +1,7 @@
 #include "DuelCharacter.h"
 #include "DuelWeaponPose.h"
 #include "DuelAnimInstance.h"
+#include "DuelCharacterMovement.h"
 #include "DuelGameMode.h"
 #include "DuelGameState.h"
 #include "DuelPlayerController.h"
@@ -28,7 +29,8 @@
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 
-ADuelCharacter::ADuelCharacter()
+ADuelCharacter::ADuelCharacter(const FObjectInitializer& ObjectInitializer)
+    : Super(ObjectInitializer.SetDefaultSubobjectClass<UDuelCharacterMovement>(ACharacter::CharacterMovementComponentName))
 {
     DesiredWeaponPose=FDuelWeaponPose::Calculate(0.f,0.f,-1.f,0.f);
     VisualWeaponPose=DesiredWeaponPose;
@@ -46,6 +48,9 @@ ADuelCharacter::ADuelCharacter()
     GetCharacterMovement()->BrakingDecelerationWalking = 1800.f;
     GetCharacterMovement()->JumpZVelocity = 500.f;
     GetCharacterMovement()->AirControl = 0.3f;
+    GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch=true;
+    GetCharacterMovement()->CrouchedHalfHeight=58.f;
+    GetCharacterMovement()->MaxWalkSpeedCrouched=120.f;
     CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
     CameraBoom->SetupAttachment(GetRootComponent());
     CameraBoom->SetRelativeLocation(FVector(0, 0, 55));
@@ -181,6 +186,7 @@ void ADuelCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     DOREPLIFETIME(ADuelCharacter, ReloadStartedAt);
     DOREPLIFETIME(ADuelCharacter, bProtected);
     DOREPLIFETIME(ADuelCharacter, bAiming);
+    DOREPLIFETIME(ADuelCharacter, bSlowWalking);
     DOREPLIFETIME(ADuelCharacter, bServerTrigger);
 }
 
@@ -231,6 +237,7 @@ void ADuelCharacter::Tick(float DeltaSeconds)
     // CharacterMovement already clamps combined input, including W+A / W+D.
     // One speed cap for every direction avoids direction-dependent slowdown.
     GetCharacterMovement()->MaxWalkSpeed=bAiming ? 120.f : 375.f;
+    if (HasAuthority()) SyncSlowWalking(CastChecked<UDuelCharacterMovement>(GetCharacterMovement())->bWantsSlowWalk);
     const float CarryTarget=(!bAiming && !IsFiring() && !bReloading) ? FMath::Clamp(GetVelocity().Size2D()/180.f,0.f,1.f) : 0.f;
     VisualCarryAlpha=FMath::FInterpTo(VisualCarryAlpha,CarryTarget,DeltaSeconds,CarryTarget>VisualCarryAlpha ? 8.f : 20.f);
     if (bQuantumCharacter)
@@ -242,6 +249,8 @@ void ADuelCharacter::Tick(float DeltaSeconds)
         Rifle->SetRelativeRotation(FRotator(Pitch, 0, 0));
     if (IsLocallyControlled())
     {
+        const FVector BoomLocation=CameraBoom->GetRelativeLocation();
+        CameraBoom->SetRelativeLocation(FVector(0,0,FMath::FInterpTo(BoomLocation.Z,bIsCrouched ? 40.f : 55.f,DeltaSeconds,12.f)));
         FollowCamera->FieldOfView = FMath::FInterpTo(FollowCamera->FieldOfView, bAiming ? 65.f : 90.f, DeltaSeconds, 12.f);
         CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, bAiming ? 220.f : 300.f, DeltaSeconds, 12.f);
         if (!CanUseWeapon() && bLocalTrigger) EndFire();
@@ -289,6 +298,26 @@ void ADuelCharacter::MoveForward(float Value)
 void ADuelCharacter::MoveRight(float Value)
 {
     if (CanMove() && Controller) AddMovementInput(FRotationMatrix(FRotator(0, Controller->GetControlRotation().Yaw, 0)).GetUnitAxis(EAxis::Y), Value);
+}
+void ADuelCharacter::SetCrouching(bool Pressed)
+{
+    if (!IsLocallyControlled()) return;
+    if (Pressed && CanMove()) Crouch();
+    else if (!Pressed) UnCrouch();
+}
+void ADuelCharacter::SetSlowWalking(bool Pressed)
+{
+    if (!IsLocallyControlled()) return;
+    CastChecked<UDuelCharacterMovement>(GetCharacterMovement())->bWantsSlowWalk=Pressed && CanMove();
+    SyncSlowWalking(Pressed && CanMove());
+}
+void ADuelCharacter::SyncSlowWalking(bool Pressed)
+{
+    if (HasAuthority()) bSlowWalking=Pressed && CanMove();
+}
+bool ADuelCharacter::IsSlowWalking() const
+{
+    return IsLocallyControlled() || HasAuthority() ? CastChecked<UDuelCharacterMovement>(GetCharacterMovement())->bWantsSlowWalk : bSlowWalking;
 }
 FRotator ADuelCharacter::LocalAim() const
 {
@@ -351,7 +380,7 @@ void ADuelCharacter::ServerSetAiming_Implementation(bool Aiming) { bAiming = Aim
 void ADuelCharacter::ComputeShotView(FVector& Origin, FVector& Direction) const
 {
     Direction = ServerAimRotation.Vector();
-    const FVector Pivot = GetActorLocation() + FVector(0, 0, 55);
+    const FVector Pivot = GetActorLocation() + FVector(0, 0, bIsCrouched ? 40.f : 55.f);
     const FVector Desired = Pivot - Direction * (bAiming ? 220.f : 300.f) + FRotationMatrix(ServerAimRotation).GetUnitAxis(EAxis::Y) * 65.f;
     FCollisionQueryParams Params(SCENE_QUERY_STAT(DuelCamera), false, this);
     FHitResult Hit;
@@ -386,9 +415,9 @@ void ADuelCharacter::FireOnce()
     FHitResult AimHit;
     FVector AimPoint = CameraOrigin + Direction * Rules->WeaponRange;
     if (GetWorld()->LineTraceSingleByChannel(AimHit, CameraOrigin, AimPoint, ECC_Visibility, Params)) AimPoint = AimHit.ImpactPoint;
-    const FVector Muzzle = GetActorLocation() + FVector(0, 0, 40) + Direction * 103.f + FRotationMatrix(ServerAimRotation).GetUnitAxis(EAxis::Y) * 25.f;
+    const FVector Muzzle = GetActorLocation() + FVector(0, 0, bIsCrouched ? 25.f : 40.f) + Direction * 103.f + FRotationMatrix(ServerAimRotation).GetUnitAxis(EAxis::Y) * 25.f;
     FHitResult Barrier;
-    const FVector GunPivot = GetActorLocation() + FVector(0, 0, 40);
+    const FVector GunPivot = GetActorLocation() + FVector(0, 0, bIsCrouched ? 25.f : 40.f);
     const bool MuzzleBlocked = GetWorld()->SweepSingleByChannel(Barrier, GunPivot, Muzzle, FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(5.f), Params);
     FHitResult Hit;
     FVector End = AimPoint;
@@ -477,6 +506,9 @@ void ADuelCharacter::FinishReload()
 }
 void ADuelCharacter::StopCombat()
 {
+    CastChecked<UDuelCharacterMovement>(GetCharacterMovement())->bWantsSlowWalk=false;
+    bSlowWalking=false;
+    UnCrouch();
     if (IsLocallyControlled()) EndFire();
     bServerTrigger = false;
     bLocalTrigger = false;

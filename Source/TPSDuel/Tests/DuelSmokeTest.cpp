@@ -23,6 +23,7 @@
 #include "UObject/UnrealType.h"
 #include "DuelAnimInstance.h"
 #include "Misc/App.h"
+#include "Components/CapsuleComponent.h"
 
 void ADuelPlayerController::TickSmokeTest()
 {
@@ -137,6 +138,7 @@ void ADuelPlayerController::TickSmokeTest()
         if (auto* PreviewCharacter=Cast<ADuelCharacter>(GetPawn()))
         {
             if (FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewAim"))) PreviewCharacter->SetAiming(true);
+            if (FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewCrouch"))) PreviewCharacter->SetCrouching(true);
             float Pitch=0.f;
             const bool HasPitch=FParse::Value(FCommandLine::Get(),TEXT("DuelPreviewPitch="),Pitch);
             if (HasPitch || FParse::Param(FCommandLine::Get(),TEXT("DuelPreviewSide")))
@@ -225,7 +227,7 @@ void ADuelPlayerController::TickSmokeTest()
     {
         FireReleased();
         if (Now - SmokeFinishSeen >= 1)
-            Report(State->Phase == EDuelPhase::Finished && State->WinnerSlot == 0 && Blue == 3 && Red == 1 && SmokeReloadSeen,
+            Report(State->Phase == EDuelPhase::Finished && State->WinnerSlot == 0 && Blue == 3 && Red == 1 && SmokeReloadSeen && SmokeQuietSeen && SmokeCrouchSeen,
                 FString::Printf(TEXT("BLUE=%d RED=%d WINNER=%d"), Blue, Red, State->WinnerSlot));
         return;
     }
@@ -245,6 +247,24 @@ void ADuelPlayerController::TickSmokeTest()
     }
     ADuelCharacter* Self = Cast<ADuelCharacter>(GetPawn());
     const ADuelPlayerState* MyState = GetPlayerState<ADuelPlayerState>();
+    if (Self && MyState && SmokeStanceStart==0) SmokeStanceStart=Now;
+    if (Self && SmokeStanceStart>0 && Now-SmokeStanceStart<3.0)
+    {
+        const double StanceTime=Now-SmokeStanceStart;
+        for (TActorIterator<ADuelCharacter> It(GetWorld()); It; ++It)
+            if (*It!=Self)
+            {
+                const bool Quiet=It->IsSlowWalking() && FMath::Abs(It->GetVelocity().Size2D()-150.f)<10.f;
+                const bool Crouched=It->bIsCrouched && FMath::Abs(It->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()-58.f)<1.f;
+                if (Quiet && !SmokeQuietSeen) UE_LOG(LogTPSDuel,Display,TEXT("STANCE_SYNC role=%s remoteQuiet=1 speed=%.2f"),*TestRole,It->GetVelocity().Size2D());
+                if (Crouched && !SmokeCrouchSeen) UE_LOG(LogTPSDuel,Display,TEXT("STANCE_SYNC role=%s remoteCrouch=1 capsule=%.1f"),*TestRole,It->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight());
+                SmokeQuietSeen |= Quiet; SmokeCrouchSeen |= Crouched;
+            }
+        if (StanceTime<1.2) { WalkPressed(); Self->MoveForward(1.f); }
+        else if (StanceTime<2.4) { WalkReleased(); CrouchPressed(); Self->MoveForward(1.f); }
+        else { WalkReleased(); CrouchReleased(); }
+        return;
+    }
     static double LastDiagnostic = 0;
     const bool LogDiagnostic = Now - LastDiagnostic > 5;
     if (LogDiagnostic)

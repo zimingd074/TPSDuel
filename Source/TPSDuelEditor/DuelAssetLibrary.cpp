@@ -20,6 +20,7 @@
 #include "AnimGraphNode_StateMachine.h"
 #include "AnimGraphNode_BlendSpacePlayer.h"
 #include "AnimGraphNode_BlendListByBool.h"
+#include "AnimGraphNode_StateResult.h"
 #include "K2Node_VariableGet.h"
 #include "DuelAnimInstance.h"
 #include "Animation/BlendSpace.h"
@@ -34,85 +35,58 @@ IMPLEMENT_MODULE(FDefaultModuleImpl, TPSDuelEditor)
 bool UDuelAssetLibrary::ConfigureQuantumLocomotion()
 {
     auto* Blueprint=LoadObject<UAnimBlueprint>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Q_ThirdPerson_AnimBP.Q_ThirdPerson_AnimBP"));
-    if (!Blueprint) return false;
+    auto* Standing=LoadObject<UBlendSpace>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/BS_Combat.BS_Combat"));
+    auto* Crouched=LoadObject<UBlendSpace>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/BS_Crouch.BS_Crouch"));
+    if (!Blueprint || !Standing || !Crouched) return false;
     Blueprint->Modify(); Blueprint->ParentClass=UDuelAnimInstance::StaticClass();
-    // Older local assets may contain an experimental template/combat switch.
-    // Restore the single rifle locomotion path before compiling the blueprint.
-    TArray<UEdGraph*> PreviousGraphs; Blueprint->GetAllGraphs(PreviousGraphs);
-    for (auto* Graph : PreviousGraphs)
-        for (auto* Node : TArray<UEdGraphNode*>(Graph->Nodes))
-            if (auto* Select=Cast<UAnimGraphNode_BlendListByBool>(Node))
-            {
-                auto* RiflePin=Select->FindPin(TEXT("BlendPose_0"));
-                auto* Output=Select->FindPin(TEXT("Pose"));
-                if (!RiflePin || RiflePin->LinkedTo.Num()!=1 || !Output) return false;
-                auto* Rifle=Cast<UAnimGraphNode_BlendSpacePlayer>(RiflePin->LinkedTo[0]->GetOwningNode());
-                if (!Rifle) return false;
-                for (auto* Target : TArray<UEdGraphPin*>(Output->LinkedTo))
-                {
-                    Target->BreakAllPinLinks(); Rifle->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Target);
-                }
-                FBlueprintEditorUtils::RemoveNode(Blueprint,Select,true);
-                for (auto* Candidate : TArray<UEdGraphNode*>(Graph->Nodes))
-                {
-                    auto* Getter=Cast<UK2Node_VariableGet>(Candidate);
-                    if ((Cast<UAnimGraphNode_BlendSpacePlayer>(Candidate) && Candidate!=Rifle) ||
-                        (Getter && Getter->VariableReference.GetMemberName()==TEXT("DuelCombatLocomotion")))
-                        FBlueprintEditorUtils::RemoveNode(Blueprint,Candidate,true);
-                }
-            }
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
     FKismetEditorUtilities::CompileBlueprint(Blueprint);
-    auto* Combat=LoadObject<UBlendSpace>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/BS_Combat.BS_Combat"));
     TArray<UEdGraph*> Graphs; Blueprint->GetAllGraphs(Graphs);
     bool Configured=false;
     for (auto* Graph : Graphs)
+    {
+        if (Graph->GetName()!=TEXT("Idle/Run")) continue;
+        UAnimGraphNode_StateResult* Result=nullptr;
+        for (auto* Node : Graph->Nodes)
+            if (auto* Candidate=Cast<UAnimGraphNode_StateResult>(Node)) Result=Candidate;
+        if (!Result) return false;
+        // Rebuild only this ground state; jumping and upper-body actions persist.
+        Graph->Modify();
         for (auto* Node : TArray<UEdGraphNode*>(Graph->Nodes))
-            if (auto* Player=Cast<UAnimGraphNode_BlendSpacePlayer>(Node))
-            {
-                if (Combat) Player->Node.BlendSpace=Combat;
-                for (auto& Property : Player->ShowPinForProperties)
-                    if (Property.PropertyName==TEXT("PlayRate") || Property.PropertyName==TEXT("X") || Property.PropertyName==TEXT("Y")) Property.bShowPin=true;
-                Player->ReconstructNode();
-                auto* Rate=Player->FindPin(TEXT("PlayRate"));
-                if (!Rate) return false;
-                UK2Node_VariableGet* Getter=nullptr;
-                for (auto* Candidate : Graph->Nodes)
-                    if (auto* Variable=Cast<UK2Node_VariableGet>(Candidate))
-                        if (Variable->VariableReference.GetMemberName()==TEXT("DuelLocomotionRate")) Getter=Variable;
-                if (!Getter)
-                {
-                    Getter=NewObject<UK2Node_VariableGet>(Graph);
-                    Getter->VariableReference.SetSelfMember(TEXT("DuelLocomotionRate"));
-                    Graph->AddNode(Getter,false,false); Getter->CreateNewGuid(); Getter->PostPlacedNewNode(); Getter->AllocateDefaultPins();
-                    Getter->NodePosX=Player->NodePosX-250; Getter->NodePosY=Player->NodePosY+160;
-                }
-                Rate->BreakAllPinLinks(); Getter->FindPinChecked(TEXT("DuelLocomotionRate"))->MakeLinkTo(Rate); Configured=true;
-                if (Combat)
-                {
-                    auto* X=Player->FindPinChecked(TEXT("X"));
-                    auto* Y=Player->FindPinChecked(TEXT("Y"));
-                    Y->BreakAllPinLinks(); X->BreakAllPinLinks();
-                    for (const TCHAR* Member : {TEXT("Speed"),TEXT("DuelDirection")})
-                    {
-                        UK2Node_VariableGet* Variable=nullptr;
-                        for (auto* Candidate : Graph->Nodes)
-                            if (auto* Existing=Cast<UK2Node_VariableGet>(Candidate))
-                                if (Existing->VariableReference.GetMemberName()==Member) Variable=Existing;
-                        if (!Variable)
-                        {
-                            Variable=NewObject<UK2Node_VariableGet>(Graph);
-                            Variable->VariableReference.SetSelfMember(Member);
-                            Graph->AddNode(Variable,false,false); Variable->CreateNewGuid(); Variable->PostPlacedNewNode(); Variable->AllocateDefaultPins();
-                            Variable->NodePosX=Player->NodePosX-250;
-                        }
-                        Variable->FindPinChecked(Member)->MakeLinkTo(FString(Member)==TEXT("Speed") ? Y : X);
-                    }
-                }
-            }
+            if (Cast<UAnimGraphNode_BlendSpacePlayer>(Node) || Cast<UAnimGraphNode_BlendListByBool>(Node) || Cast<UK2Node_VariableGet>(Node))
+                FBlueprintEditorUtils::RemoveNode(Blueprint,Node,true);
+        auto Add=[Graph](UEdGraphNode* Node,int32 X,int32 Y)
+        {
+            Graph->AddNode(Node,false,false); Node->CreateNewGuid(); Node->PostPlacedNewNode();
+            Node->AllocateDefaultPins(); Node->NodePosX=X; Node->NodePosY=Y;
+        };
+        auto* Stand=NewObject<UAnimGraphNode_BlendSpacePlayer>(Graph);
+        auto* Crouch=NewObject<UAnimGraphNode_BlendSpacePlayer>(Graph);
+        Stand->Node.BlendSpace=Standing; Crouch->Node.BlendSpace=Crouched;
+        Add(Stand,-650,250); Add(Crouch,-650,0);
+        auto* Select=NewObject<UAnimGraphNode_BlendListByBool>(Graph);
+        Select->Node.BlendPose.SetNum(2); Select->Node.BlendTime={.15f,.15f};
+        Add(Select,-250,0);
+        auto Connect=[&Add](const TCHAR* Member,UEdGraphPin* Pin,int32 Y)
+        {
+            auto* Getter=NewObject<UK2Node_VariableGet>(Pin->GetOwningNode()->GetGraph());
+            Getter->VariableReference.SetSelfMember(Member); Add(Getter,-1000,Y);
+            Getter->FindPinChecked(Member)->MakeLinkTo(Pin);
+        };
+        Connect(TEXT("Speed"),Stand->FindPinChecked(TEXT("Y")),250);
+        Connect(TEXT("DuelDirection"),Stand->FindPinChecked(TEXT("X")),350);
+        Connect(TEXT("Speed"),Crouch->FindPinChecked(TEXT("Y")),0);
+        Connect(TEXT("DuelDirection"),Crouch->FindPinChecked(TEXT("X")),100);
+        Connect(TEXT("DuelCrouched"),Select->FindPinChecked(TEXT("bActiveValue")),-150);
+        Crouch->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Select->FindPinChecked(TEXT("BlendPose_0")));
+        Stand->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Select->FindPinChecked(TEXT("BlendPose_1")));
+        Result->FindPinChecked(TEXT("Result"))->BreakAllPinLinks();
+        Select->FindPinChecked(TEXT("Pose"))->MakeLinkTo(Result->FindPinChecked(TEXT("Result")));
+        Configured=true;
+    }
     FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
     FKismetEditorUtilities::CompileBlueprint(Blueprint); Blueprint->MarkPackageDirty();
-    if (auto* Defaults=Cast<UDuelAnimInstance>(Blueprint->GeneratedClass->GetDefaultObject())) Defaults->bDedicatedLocomotion=Combat!=nullptr;
+    if (auto* Defaults=Cast<UDuelAnimInstance>(Blueprint->GeneratedClass->GetDefaultObject())) Defaults->bDedicatedLocomotion=true;
     return Configured && Blueprint->Status!=BS_Error;
 }
 
@@ -426,7 +400,7 @@ TArray<FString> UDuelAssetLibrary::RetargetCombatAnimations()
     NewSkeleton->SetBoneTranslationRetargetingMode(0,EBoneTranslationRetargetingMode::Skeleton,true);
     NewSkeleton->SetBoneTranslationRetargetingMode(0,EBoneTranslationRetargetingMode::Animation);
     NewSkeleton->SetBoneTranslationRetargetingMode(NewMesh->GetRefSkeleton().FindBoneIndex(TEXT("pelvis")),EBoneTranslationRetargetingMode::AnimationScaled);
-    const TCHAR* Names[]={TEXT("Idle_Rifle_Hip"),TEXT("Idle_Rifle_Ironsights"),TEXT("Jog_Fwd_Rifle"),TEXT("Jog_Bwd_Rifle"),TEXT("Jog_Lt_Rifle"),TEXT("Jog_Rt_Rifle"),TEXT("Walk_Fwd_Rifle_Ironsights"),TEXT("Walk_Bwd_Rifle_Ironsights"),TEXT("Walk_Lt_Rifle_Ironsights"),TEXT("Walk_Rt_Rifle_Ironsights"),TEXT("Sprint_Fwd_Rifle"),TEXT("Fire_Rifle_Hip"),TEXT("Fire_Rifle_Ironsights"),TEXT("Reload_Rifle_Hip"),TEXT("Reload_Rifle_Ironsights"),TEXT("Jump_From_Jog")};
+    const TCHAR* Names[]={TEXT("Idle_Rifle_Hip"),TEXT("Idle_Rifle_Ironsights"),TEXT("Jog_Fwd_Rifle"),TEXT("Jog_Bwd_Rifle"),TEXT("Jog_Lt_Rifle"),TEXT("Jog_Rt_Rifle"),TEXT("Walk_Fwd_Rifle_Ironsights"),TEXT("Walk_Bwd_Rifle_Ironsights"),TEXT("Walk_Lt_Rifle_Ironsights"),TEXT("Walk_Rt_Rifle_Ironsights"),TEXT("Sprint_Fwd_Rifle"),TEXT("Fire_Rifle_Hip"),TEXT("Fire_Rifle_Ironsights"),TEXT("Reload_Rifle_Hip"),TEXT("Reload_Rifle_Ironsights"),TEXT("Jump_From_Jog"),TEXT("Crouch_Idle_Rifle_Hip"),TEXT("Crouch_Walk_Fwd_Rifle_Hip"),TEXT("Crouch_Walk_Bwd_Rifle_Hip"),TEXT("Crouch_Walk_Lt_Rifle_Hip"),TEXT("Crouch_Walk_Rt_Rifle_Hip")};
     TArray<TWeakObjectPtr<UObject>> Sources;
     for (const TCHAR* Name : Names)
     {
@@ -472,5 +446,26 @@ TArray<FString> UDuelAssetLibrary::RetargetCombatAnimations()
     Blend->TargetWeightInterpolationSpeedPerSec=8.f;
     Blend->ValidateSampleData(); Blend->FillupGridElements(Mapping,Grid); Blend->MarkPackageDirty();
     Result.Add(Blend->GetPathName());
+    auto* CrouchPackage=CreatePackage(TEXT("/Game/ThirdParty/Quantum/Animations/Combat/BS_Crouch"));
+    auto* Crouch=FindObject<UBlendSpace>(CrouchPackage,TEXT("BS_Crouch"));
+    if (!Crouch) { Crouch=NewObject<UBlendSpace>(CrouchPackage,TEXT("BS_Crouch"),RF_Public|RF_Standalone); FAssetRegistryModule::AssetCreated(Crouch); }
+    Crouch->SetSkeleton(NewSkeleton);
+    auto* CrouchDirection=Parameters->ContainerPtrToValuePtr<FBlendParameter>(Crouch,0);
+    CrouchDirection->DisplayName=TEXT("Direction"); CrouchDirection->Min=-180.f; CrouchDirection->Max=180.f; CrouchDirection->GridNum=4;
+    auto* CrouchSpeed=Parameters->ContainerPtrToValuePtr<FBlendParameter>(Crouch,1);
+    CrouchSpeed->DisplayName=TEXT("Speed"); CrouchSpeed->Min=0.f; CrouchSpeed->Max=120.f; CrouchSpeed->GridNum=1;
+    while (Crouch->GetNumberOfBlendSamples()) Crouch->DeleteSample(Crouch->GetNumberOfBlendSamples()-1);
+    Mapping.Empty(); Grid.Empty();
+    const TCHAR* CrouchWalk[]={TEXT("Crouch_Walk_Bwd_Rifle_Hip"),TEXT("Crouch_Walk_Lt_Rifle_Hip"),TEXT("Crouch_Walk_Fwd_Rifle_Hip"),TEXT("Crouch_Walk_Rt_Rifle_Hip"),TEXT("Crouch_Walk_Bwd_Rifle_Hip")};
+    for (int32 X=0; X<5; ++X) for (int32 Y=0; Y<2; ++Y)
+    {
+        const TCHAR* Name=Y==0 ? TEXT("Crouch_Idle_Rifle_Hip") : CrouchWalk[X];
+        auto* Sequence=LoadObject<UAnimSequence>(nullptr,*FString::Printf(TEXT("/Game/ThirdParty/Quantum/Animations/Combat/ASP_%s.ASP_%s"),Name,Name));
+        if (!Sequence || !Crouch->AddSample(Sequence,FVector(-180+90*X,120.f*Y,0))) return TArray<FString>();
+        Mapping.Add(X*2+Y); FEditorElement Element; Element.Indices[0]=X*2+Y; Element.Weights[0]=1.f; Grid.Add(Element);
+    }
+    Crouch->TargetWeightInterpolationSpeedPerSec=8.f;
+    Crouch->ValidateSampleData(); Crouch->FillupGridElements(Mapping,Grid); Crouch->MarkPackageDirty();
+    Result.Add(Crouch->GetPathName());
     return Result;
 }

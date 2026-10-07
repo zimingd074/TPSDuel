@@ -14,6 +14,12 @@
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 #include "Misc/App.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/BoxComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "DuelAnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "UnrealClient.h"
 
 bool ADuelPlayerController::TickInputTest()
 {
@@ -29,11 +35,12 @@ bool ADuelPlayerController::TickInputTest()
         const FString Result=(Passed ? TEXT("PASS ") : TEXT("FAIL "))+Detail;
         FFileHelper::SaveStringToFile(Result,*FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("InputTest.txt")));
         UE_LOG(LogTPSDuel,Display,TEXT("INPUT_TEST %s"),*Result);
-        SmokeExitAt=Now+1; FireReleased();
+        SmokeExitAt=Now+1; ClearLocalInput();
+        if (InputTestCeiling.IsValid()) InputTestCeiling->Destroy();
         FApp::SetUseFixedTimeStep(false);
     };
     if (SmokeExitAt>0) { if (Now>=SmokeExitAt) FPlatformMisc::RequestExit(false); return true; }
-    if (Now-SmokeStart>20) { Report(false,FString::Printf(TEXT("stage=%d timed out"),InputTestStage)); return true; }
+    if (Now-SmokeStart>35) { Report(false,FString::Printf(TEXT("stage=%d timed out"),InputTestStage)); return true; }
     auto Next=[this,Now]() { ++InputTestStage; InputStageStart=Now; };
     auto Key=[this](FKey Value) { InputKey(Value,IE_Pressed,1.f,false); InputKey(Value,IE_Released,0.f,false); };
     auto Mouse=[this](bool Pressed)
@@ -134,10 +141,75 @@ bool ADuelPlayerController::TickInputTest()
         const int32 Shots=InputTestAmmo-Self->GetAmmo();
         UE_LOG(LogTPSDuel,Display,TEXT("CADENCE_CHECK mode=%s shots=%d elapsed=%.3f"),InputTestStage==12 ? TEXT("30Hz") : TEXT("variable"),Shots,Duration);
         if (Shots<12 || Shots>15) { Report(false,TEXT("automatic fire dropped timer shots or bypassed cooldown")); break; }
-        if (InputTestStage==12) Next();
-        else Report(true,TEXT("Slate firstClick/release/menu/resume; R reload; waiting no damage; countdown blocked; 30Hz/variable cadence"));
+        if (InputTestStage==14) FApp::SetUseFixedTimeStep(false);
+        Next();
         break;
     }
+    case 15:
+        Self->GetCharacterMovement()->StopMovementImmediately();
+        Self->SetActorLocation(FVector(-1350,0,90),false,nullptr,ETeleportType::TeleportPhysics);
+        InputKey(EKeys::LeftControl,IE_Pressed,1.f,false);
+        InputKey(EKeys::LeftShift,IE_Pressed,1.f,false);
+        InputKey(EKeys::W,IE_Pressed,1.f,false);
+        Next(); break;
+    case 16:
+    {
+        if (Elapsed<.6) break;
+        const auto* Anim=Cast<UDuelAnimInstance>(Self->GetMesh()->GetAnimInstance());
+        if (!Self->bIsCrouched || !Self->IsSlowWalking() || !Anim || !Anim->DuelCrouched ||
+            FMath::Abs(Self->GetVelocity().Size2D()-80.f)>5.f || FMath::Abs(Self->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()-58.f)>1.f)
+        { Report(false,TEXT("Ctrl+Shift crouch walk or reduced capsule failed")); break; }
+        const float Grip=FVector::Dist(Self->GetMesh()->GetBoneLocation(TEXT("hand_l"),EBoneSpaces::ComponentSpace),Self->GetVisualWeaponPose().LeftHand);
+        if (Grip>1.f) { Report(false,TEXT("crouched hand lost rifle grip")); break; }
+        UE_LOG(LogTPSDuel,Display,TEXT("STANCE_CHECK crouchQuiet speed=%.2f capsule=%.1f grip=%.2f"),Self->GetVelocity().Size2D(),Self->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight(),Grip);
+        FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots/Stance-CrouchWalk.png")),true,false);
+        InputKey(EKeys::LeftShift,IE_Released,0.f,false); Next(); break;
+    }
+    case 17:
+        if (Elapsed<.4) break;
+        if (!Self->bIsCrouched || Self->IsSlowWalking() || FMath::Abs(Self->GetVelocity().Size2D()-120.f)>5.f) { Report(false,TEXT("Shift release did not restore crouch speed")); break; }
+        UE_LOG(LogTPSDuel,Display,TEXT("STANCE_CHECK crouch speed=%.2f"),Self->GetVelocity().Size2D());
+        InputKey(EKeys::LeftControl,IE_Released,0.f,false); InputKey(EKeys::LeftShift,IE_Pressed,1.f,false); Next(); break;
+    case 18:
+        if (Elapsed<.4) break;
+        if (Self->bIsCrouched || !Self->IsSlowWalking() || FMath::Abs(Self->GetVelocity().Size2D()-150.f)>5.f) { Report(false,TEXT("standing quiet walk failed")); break; }
+        UE_LOG(LogTPSDuel,Display,TEXT("STANCE_CHECK quiet speed=%.2f"),Self->GetVelocity().Size2D());
+        InputKey(EKeys::LeftShift,IE_Released,0.f,false); Next(); break;
+    case 19:
+        if (Elapsed<.4) break;
+        if (FMath::Abs(Self->GetVelocity().Size2D()-375.f)>5.f) { Report(false,TEXT("Shift release did not restore running")); break; }
+        UE_LOG(LogTPSDuel,Display,TEXT("STANCE_CHECK run speed=%.2f"),Self->GetVelocity().Size2D());
+        InputKey(EKeys::W,IE_Released,0.f,false);
+        InputKey(EKeys::LeftControl,IE_Pressed,1.f,false); InputKey(EKeys::LeftShift,IE_Pressed,1.f,false); Key(EKeys::Escape); Next(); break;
+    case 20:
+        if (Elapsed<.3) break;
+        if (!IsMenuVisible() || Self->IsSlowWalking() || Self->bIsCrouched) { Report(false,TEXT("menu did not clear stance input")); break; }
+        InputKey(EKeys::LeftControl,IE_Released,0.f,false); InputKey(EKeys::LeftShift,IE_Released,0.f,false); Key(EKeys::Escape);
+        Self->GetCharacterMovement()->StopMovementImmediately();
+        Self->SetActorLocation(FVector(-1350,0,90),false,nullptr,ETeleportType::TeleportPhysics);
+        InputKey(EKeys::RightControl,IE_Pressed,1.f,false); Next(); break;
+    case 21:
+    {
+        if (Elapsed<.3) break;
+        if (!Self->bIsCrouched) { Report(false,TEXT("right Ctrl mapping failed")); break; }
+        auto* Ceiling=GetWorld()->SpawnActor<AActor>();
+        auto* Box=NewObject<UBoxComponent>(Ceiling);
+        Ceiling->SetRootComponent(Box); Box->SetBoxExtent(FVector(150,150,8));
+        Box->SetCollisionProfileName(TEXT("BlockAll")); Box->RegisterComponent();
+        Ceiling->SetActorLocation(Self->GetActorLocation()+FVector(0,0,77));
+        InputTestCeiling=Ceiling;
+        InputKey(EKeys::RightControl,IE_Released,0.f,false); Next(); break;
+    }
+    case 22:
+        if (Elapsed<.3) break;
+        if (!Self->bIsCrouched) { Report(false,TEXT("stood through low ceiling")); break; }
+        InputTestCeiling->Destroy(); Next(); break;
+    case 23:
+        if (Elapsed<.3) break;
+        if (Self->bIsCrouched || FMath::Abs(Self->GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight()-88.f)>1.f) { Report(false,TEXT("did not stand after ceiling cleared")); break; }
+        UE_LOG(LogTPSDuel,Display,TEXT("STANCE_CHECK menuClear=1 ceilingBlocked=1 ceilingRelease=1"));
+        Report(true,TEXT("Slate mouse/menu/reload/cadence; Ctrl/Shift speeds 80/120/150/375; crouch grip/capsule; menu clear; low-ceiling stand protection"));
+        break;
     }
     return true;
 #else

@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskRuntime=Join-Path $taskRoot 'Builds\Windows\WindowsNoEditor\TPSDuel'
 $taskExe=Join-Path $taskRuntime 'Binaries\Win64\TPSDuel.exe'
-$taskLog=Join-Path $taskRoot 'Saved\locomotion-v051.log'
+$taskLog=Join-Path $taskRoot 'Saved\locomotion-v053.log'
 $taskResult=Join-Path $taskRuntime 'Saved\MotionTest.txt'
 if(-not(Test-Path -LiteralPath $taskExe)){throw 'Package Windows first.'}
 if(Test-Path -LiteralPath $taskResult){Remove-Item -LiteralPath $taskResult}
@@ -57,7 +57,7 @@ try {
         if($taskIndex -in @(15,16) -and $taskAction -eq 'None'){throw 'Fire/reload animation was not active.'}
     }
     if(-not $NullRHI){
-        $taskOutput=Join-Path $taskRoot 'docs\screenshots\locomotion-v0.5.1'
+        $taskOutput=Join-Path $taskRoot 'docs\screenshots\locomotion-v0.5.3'
         New-Item -ItemType Directory -Path $taskOutput -Force | Out-Null
         # Windows image previews may map existing PNGs and prevent truncation.
         # Preserve the previous capture, then publish a fresh file at its path.

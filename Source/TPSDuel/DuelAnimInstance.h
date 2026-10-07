@@ -13,6 +13,7 @@ public:
     virtual void NativeUpdateAnimation(float DeltaSeconds) override;
     UPROPERTY(BlueprintReadOnly, Category="Locomotion") float DuelLocomotionRate=1.f;
     UPROPERTY(BlueprintReadOnly, Category="Locomotion") float DuelDirection=0.f;
+    UPROPERTY(BlueprintReadOnly, Category="Locomotion") bool DuelCrouched=false;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Locomotion") bool bDedicatedLocomotion=false;
     void CacheWeaponPose(const FDuelWeaponPose& Pose) const { WeaponPoseSnapshot=Pose; }
     const FDuelWeaponPose& GetWeaponPoseSnapshot() const { return WeaponPoseSnapshot; }

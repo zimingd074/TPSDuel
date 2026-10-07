@@ -94,6 +94,10 @@ void ADuelPlayerController::SetupInputComponent()
     InputComponent->BindAction(TEXT("Jump"), IE_Pressed, this, &ADuelPlayerController::JumpPressed);
     InputComponent->BindAction(TEXT("Jump"), IE_Released, this, &ADuelPlayerController::JumpReleased);
     InputComponent->BindAction(TEXT("Menu"), IE_Pressed, this, &ADuelPlayerController::ToggleMenu);
+    InputComponent->BindAction(TEXT("Crouch"), IE_Pressed, this, &ADuelPlayerController::CrouchPressed);
+    InputComponent->BindAction(TEXT("Crouch"), IE_Released, this, &ADuelPlayerController::CrouchReleased);
+    InputComponent->BindAction(TEXT("Walk"), IE_Pressed, this, &ADuelPlayerController::WalkPressed);
+    InputComponent->BindAction(TEXT("Walk"), IE_Released, this, &ADuelPlayerController::WalkReleased);
 }
 void ADuelPlayerController::MoveForward(float Value)
 {
@@ -113,12 +117,18 @@ void ADuelPlayerController::AimReleased() { if (ADuelCharacter* C = Cast<ADuelCh
 void ADuelPlayerController::ReloadPressed() { if (!IsMenuVisible()) if (ADuelCharacter* C = Cast<ADuelCharacter>(GetPawn())) C->Reload(); }
 void ADuelPlayerController::JumpPressed() { if (!IsMenuVisible()) if (ADuelCharacter* C = Cast<ADuelCharacter>(GetPawn())) if (C->CanMove()) C->Jump(); }
 void ADuelPlayerController::JumpReleased() { if (ADuelCharacter* C = Cast<ADuelCharacter>(GetPawn())) C->StopJumping(); }
+void ADuelPlayerController::CrouchPressed() { if (!IsMenuVisible()) if (auto* C=Cast<ADuelCharacter>(GetPawn())) C->SetCrouching(true); }
+void ADuelPlayerController::CrouchReleased() { if (auto* C=Cast<ADuelCharacter>(GetPawn())) C->SetCrouching(false); }
+void ADuelPlayerController::WalkPressed() { if (!IsMenuVisible()) if (auto* C=Cast<ADuelCharacter>(GetPawn())) C->SetSlowWalking(true); }
+void ADuelPlayerController::WalkReleased() { if (auto* C=Cast<ADuelCharacter>(GetPawn())) C->SetSlowWalking(false); }
 void ADuelPlayerController::ClearLocalInput()
 {
     TouchMovement = FVector2D::ZeroVector;
     FireReleased();
     AimReleased();
     JumpReleased();
+    CrouchReleased();
+    WalkReleased();
 }
 void ADuelPlayerController::ApplyInputMode()
 {
