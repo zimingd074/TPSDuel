@@ -12,6 +12,9 @@
 #include "HAL/PlatformTime.h"
 #include "HAL/PlatformMisc.h"
 #include "UnrealClient.h"
+#include "Misc/App.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 
 bool ADuelPlayerController::TickWeaponTest()
 {
@@ -19,10 +22,11 @@ bool ADuelPlayerController::TickWeaponTest()
     if (!FParse::Param(FCommandLine::Get(),TEXT("DuelWeaponTest"))) return false;
     auto* Self=Cast<ADuelCharacter>(GetPawn());
     if (!Self) return true;
-    const double Now=FPlatformTime::Seconds();
+    const double Now=GetWorld()->TimeSeconds;
     if (SmokeStart==0)
     {
         SmokeStart=InputStageStart=Now;
+        FApp::SetFixedDeltaTime(1.0/60.0); FApp::SetUseFixedTimeStep(true);
         Self->SetActorLocationAndRotation(FVector(-700,-50,90),FRotator::ZeroRotator,false,nullptr,ETeleportType::TeleportPhysics);
         Self->GetMesh()->VisibilityBasedAnimTickOption=EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
         SetControlRotation(FRotator::ZeroRotator);
@@ -33,6 +37,7 @@ bool ADuelPlayerController::TickWeaponTest()
         FFileHelper::SaveStringToFile(Result,*FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("WeaponTest.txt")));
         UE_LOG(LogTPSDuel,Display,TEXT("WEAPON_TEST %s"),*Result);
         ClearLocalInput(); if (InputTestCeiling.IsValid()) InputTestCeiling->Destroy();
+        FApp::SetUseFixedTimeStep(false);
         SmokeExitAt=Now+1;
     };
     if (SmokeExitAt>0) { if(Now>=SmokeExitAt) FPlatformMisc::RequestExit(false); return true; }
@@ -54,6 +59,21 @@ bool ADuelPlayerController::TickWeaponTest()
         return true;
     };
     const double Elapsed=Now-InputStageStart;
+    // Sample every animation frame during ADS bursts, including recoil peaks.
+    // The chamber/stock top is 18 cm above the model origin. A 15 cm envelope
+    // includes the head radius, weapon half-width and a small separation margin.
+    if ((InputTestStage>=12 && InputTestStage<=17 && Elapsed>.05) || InputTestStage==20)
+    {
+        const auto Pose=Self->GetVisualWeaponPose();
+        const FVector Head=Self->GetMesh()->GetBoneLocation(TEXT("head"),EBoneSpaces::ComponentSpace)+FVector(0,0,6);
+        const float Clearance=FMath::PointDistToSegment(Head,Pose.Gun.TransformPosition(FVector(0,-27,18)),Pose.Gun.TransformPosition(FVector(0,15,18)));
+        WeaponHeadMinimum=FMath::Min(WeaponHeadMinimum,Clearance); ++WeaponClearanceSamples;
+        if (Clearance<15.f)
+        { Report(false,FString::Printf(TEXT("ADS head overlap stage=%d clearance=%.2f"),InputTestStage,Clearance)); return true; }
+        const float GripError=FMath::Max(FVector::Dist(Self->GetMesh()->GetBoneLocation(TEXT("hand_l"),EBoneSpaces::ComponentSpace),Pose.LeftHand),FVector::Dist(Self->GetMesh()->GetBoneLocation(TEXT("hand_r"),EBoneSpaces::ComponentSpace),Pose.RightHand));
+        if (GripError>1.f)
+        { Report(false,FString::Printf(TEXT("ADS hand reach stage=%d error=%.2f"),InputTestStage,GripError)); return true; }
+    }
     switch (InputTestStage)
     {
     case 0:
@@ -111,7 +131,42 @@ bool ADuelPlayerController::TickWeaponTest()
     case 10:
         if(Self->IsReloading()) break;
         if(Self->GetAmmo()!=30) { Report(false,TEXT("reload did not refill")); break; }
-        Report(true,TEXT("stand/crouch fire; elbows below shoulders; shared grips; +/-60 aim; cover fold/recover; crouch reload")); break;
+        FireReleased(); CrouchReleased(); AimPressed(); SetControlRotation(FRotator::ZeroRotator); Next(); break;
+    case 11:
+        if(Elapsed<.4) break;
+        FirePressed(); Next(); break;
+    case 12: case 13: case 14: case 15: case 16: case 17:
+    {
+        if(Elapsed<(InputTestStage==17 ? .5 : .25)) break;
+        const auto* Montage=Self->GetMesh()->GetAnimInstance()->GetCurrentActiveMontage();
+        const auto* Clip=Montage && Montage->SlotAnimTracks.Num() && Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.Num() ? Montage->SlotAnimTracks[0].AnimTrack.AnimSegments[0].AnimReference : nullptr;
+        if (!Self->IsFiring() || Self->GetAmmo()<=0 || !Clip || !Clip->GetName().Contains(TEXT("Fire_Rifle_Ironsights")))
+        { Report(false,TEXT("ADS burst did not use ironsights fire clip")); break; }
+        const TCHAR* Names[]={TEXT("ADS-Stand"),TEXT("ADS-Up30"),TEXT("ADS-Down30"),TEXT("ADS-Up60"),TEXT("ADS-Down60"),TEXT("ADS-Crouch")};
+        UE_LOG(LogTPSDuel,Display,TEXT("ADS_CLEARANCE stage=%d minimum=%.2f samples=%d clip=%s"),InputTestStage,WeaponHeadMinimum,WeaponClearanceSamples,*Clip->GetName());
+        if (!Sample(Names[InputTestStage-12],InputTestStage==12 || InputTestStage==17)) break;
+        const float Pitches[]={30,-30,60,-60,0};
+        if (InputTestStage<17) SetControlRotation(FRotator(Pitches[InputTestStage-12],0,0));
+        if (InputTestStage==16) CrouchPressed();
+        if (InputTestStage==17)
+        {
+            FireReleased(); AimReleased(); CrouchReleased(); Next();
+        }
+        else Next();
+        break;
+    }
+    case 18:
+        if (Elapsed<.3) break;
+        ReloadPressed(); Next(); break;
+    case 19:
+        if (Self->IsReloading() || Self->GetAmmo()!=30) break;
+        AimPressed(); FirePressed(); Next(); break;
+    case 20:
+        if (Elapsed<.4) break;
+        if (!Sample(TEXT("ADS-Immediate"),true)) break;
+        UE_LOG(LogTPSDuel,Display,TEXT("ADS_CLEARANCE immediate=1 minimum=%.2f samples=%d"),WeaponHeadMinimum,WeaponClearanceSamples);
+        if (WeaponClearanceSamples<70) { Report(false,TEXT("insufficient ADS recoil samples")); break; }
+        Report(true,FString::Printf(TEXT("stand/crouch fire; grips; cover; reload; ADS and immediate aim/fire head clearance %.2fcm across %d frames"),WeaponHeadMinimum,WeaponClearanceSamples)); break;
     }
     return true;
 #else

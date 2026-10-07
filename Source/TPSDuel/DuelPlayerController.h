@@ -67,6 +67,7 @@ private:
     bool SmokeCrouchSeen = false;
     bool SmokeForwardFacingSeen = false;
     bool SmokeBackwardFacingSeen = false;
+    bool SmokeAimSeen = false;
     bool SmokePreviewCamera = false;
     int32 MotionSample = 0;
     FVector MotionLastFoot = FVector::ZeroVector;
@@ -83,5 +84,7 @@ private:
     TWeakObjectPtr<AActor> InputTestCeiling;
     float InputCadenceStartedAt = 0.f;
     int32 InputCadenceFrames = 0;
+    float WeaponHeadMinimum = 1000.f;
+    int32 WeaponClearanceSamples = 0;
     TWeakObjectPtr<ADuelCharacter> SmokePawns[2];
 };

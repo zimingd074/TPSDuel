@@ -30,10 +30,14 @@ struct FDuelWeaponPose
         const FQuat Folded=FQuat(FVector::UpVector,FMath::DegreesToRadians(80.f))
             * FQuat(FVector::ForwardVector,FMath::DegreesToRadians(-25.f));
         const FQuat Rotation=FQuat::Slerp(FreeRotation,Folded,Pose.ObstructionAlpha);
-        FVector Grip=FMath::Lerp(FMath::Lerp(FVector(-9,12,133),FVector(-7,13,142),Aim)+FVector(0,-Kick*2.f,-Tilt*12.f),FVector(-13,23,132),Carry);
+        // ADS stays beside the right shoulder instead of sliding into the neck.
+        // Limit its rearward recoil so the stock cannot pump into the collar.
+        // Return to the existing close-in magazine pose during extraction.
+        const FVector AimGrip=FMath::Lerp(FVector(-20,18,140),FVector(-7,13,142),FMath::SmoothStep(0.f,.5f,Tilt));
+        FVector Grip=FMath::Lerp(FMath::Lerp(FVector(-9,12,133),AimGrip,Aim)+FVector(0,-Kick*FMath::Lerp(2.f,.5f,Aim),-Tilt*12.f),FVector(-13,23,132),Carry);
         // Keep steep up/down aim outside the chest and face instead of rotating
         // the barrel down the middle of the body.
-        Grip.X-=16.f*FMath::SmoothStep(15.f,65.f,FMath::Abs(Pitch))*(1.f-Carry);
+        Grip.X-=FMath::Lerp(16.f,8.f,Aim)*FMath::SmoothStep(15.f,65.f,FMath::Abs(Pitch))*(1.f-Carry);
         // Rotate about the stock contact instead of driving the stock through
         // the chest/head as the player looks up or down.
         const FVector Stock(0,-22,10);
@@ -41,7 +45,9 @@ struct FDuelWeaponPose
         const FVector StockContact=FreeGrip+FreeRotation.RotateVector(Stock);
         Pose.Gun = FTransform(Rotation,StockContact-Rotation.RotateVector(Stock));
         Pose.RightHand = Pose.Gun.TransformPosition(FVector(0,-4,1));
-        const float SupportY=30.f-6.f*FMath::SmoothStep(25.f,70.f,FMath::Abs(Pitch));
+        // When tucked beside the shoulder, slide the support hand back to the
+        // receiver rather than stretching the left arm across the folded gun.
+        const float SupportY=FMath::Lerp(30.f-FMath::Lerp(6.f,20.f,Aim)*FMath::SmoothStep(25.f,70.f,FMath::Abs(Pitch)),2.f,FMath::SmoothStep(0.f,.65f,Pose.ObstructionAlpha));
         const FVector Support = Pose.Gun.TransformPosition(FVector(6,SupportY,9));
         const FVector Well = Pose.Gun.TransformPosition(FVector(0,17,2));
         const FVector Belt(14,4,101);

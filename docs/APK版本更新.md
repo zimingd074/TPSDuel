@@ -21,9 +21,9 @@ Set-Location D:\TPSDuel
 | --- | --- | --- |
 | 包名 | `com.tpsduel.prototype` | 保持一致 |
 | 签名 | Android Debug 测试证书 | 同一条测试更新链保持同一密钥 |
-| StoreVersion / versionCode | 13 | 下一次改为 14，再下一次改为 15 |
-| VersionDisplayName / versionName | 0.5.5 | 后续每次发行递增可见版本 |
-| ProjectVersion | 0.5.5 | 与 Windows 和 Android 发布版本一起更新 |
+| StoreVersion / versionCode | 14 | 下一次改为 15，再下一次改为 16 |
+| VersionDisplayName / versionName | 0.5.6 | 后续每次发行递增可见版本 |
+| ProjectVersion | 0.5.6 | 与 Windows 和 Android 发布版本一起更新 |
 
 Android 版本配置位于 `Config/DefaultEngine.ini` 的 AndroidRuntimeSettings 段；工程版本位于 `Config/DefaultGame.ini`。旧测试 APK 实际显示 versionCode=1、versionName=1.0，已归档在 `Builds/Releases/0.1.0/Android`，不是新 APK。
 
@@ -61,7 +61,9 @@ v0.5.1 移动与射击优化已生成新版 APK，以 v0.5.0 为基准校验通�
 
 蹲姿射击与穿模修复使用 v0.5.4 / versionCode 12，构建脚本默认与已归档的 v0.5.3 / code 11 比较。该版本结果见 [v0.5.4 验证报告](历史/验证报告-v0.5.4.md)。
 
-本轮移动朝向优化使用 v0.5.5 / versionCode 13，默认与 v0.5.4 / code 12 比较。最终更新校验和真机状态见 [本轮验证报告](验证报告.md)。
+移动朝向优化使用 v0.5.5 / versionCode 13，默认与 v0.5.4 / code 12 比较。该版本见 [v0.5.5 验证报告](历史/验证报告-v0.5.5.md)。
+
+本轮右键瞄准射击修复使用 v0.5.6 / versionCode 14，默认与 v0.5.5 / code 13 比较。最终构建、更新校验与真机状态见 [本轮验证报告](验证报告.md)。
 
 ## 将来是否能像商业游戏一样自动更新
 

@@ -16,11 +16,14 @@ bool FDuelRulesTest::RunTest(const FString&)
     TestTrue(TEXT("Ready rifle returns to horizontal"),FMath::Abs(FDuelWeaponPose::Calculate(0.f,0.f,-1.f,0.f,0.f).Gun.GetRotation().GetAxisY().Z)<.01f);
     const FVector Stock(0,-22,10);
     const auto Level=FDuelWeaponPose::Calculate(0.f,1.f,-1.f,0.f);
+    TestTrue(TEXT("ADS stock sits outside the neck center"),Level.Gun.TransformPosition(Stock).X<=-20.f);
+    const auto ADSRecoil=FDuelWeaponPose::Calculate(0.f,1.f,-1.f,1.f);
+    TestTrue(TEXT("ADS recoil retreats by no more than half a centimeter"),FMath::Abs(ADSRecoil.Gun.TransformPosition(Stock).Y-Level.Gun.TransformPosition(Stock).Y)<=.51f);
     for (float Angle : {-60.f,60.f})
     {
         const FVector Contact=FDuelWeaponPose::Calculate(Angle,1.f,-1.f,0.f).Gun.TransformPosition(Stock);
         TestTrue(TEXT("Pitch preserves stock height and forward contact"),FMath::Abs(Contact.Y-Level.Gun.TransformPosition(Stock).Y)<.01f && FMath::Abs(Contact.Z-Level.Gun.TransformPosition(Stock).Z)<.01f);
-        TestTrue(TEXT("Steep aim moves rifle outside torso"),Contact.X<Level.Gun.TransformPosition(Stock).X-10.f);
+        TestTrue(TEXT("Steep aim keeps stock outside torso"),Contact.X < -27.f);
     }
     const auto Folded=FDuelWeaponPose::Calculate(0.f,1.f,-1.f,0.f,0.f,1.f);
     TestTrue(TEXT("Cover tuck preserves stock contact"),FVector::Dist(Level.Gun.TransformPosition(Stock),Folded.Gun.TransformPosition(Stock))<.01f);

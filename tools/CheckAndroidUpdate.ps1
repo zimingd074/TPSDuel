@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 if(-not $AndroidSDKRoot){$AndroidSDKRoot=Join-Path $taskRoot 'LocalToolchain\AndroidSDK'}
-if(-not $PreviousAPK){$PreviousAPK=Join-Path $taskRoot 'Builds\Releases\0.5.4\Android\TPSDuel-arm64.apk'}
+if(-not $PreviousAPK){$PreviousAPK=Join-Path $taskRoot 'Builds\Releases\0.5.5\Android\TPSDuel-arm64.apk'}
 if(-not $NewAPK){
     $taskLatest=Get-ChildItem (Join-Path $taskRoot 'Builds\Android') -Recurse -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if(-not $taskLatest){throw 'No new APK found.'}

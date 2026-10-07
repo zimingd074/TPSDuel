@@ -9,6 +9,7 @@ void UDuelAnimInstance::NativeInitializeAnimation()
     Super::NativeInitializeAnimation();
     if (!bDedicatedLocomotion) return;
     FireClip=LoadObject<UAnimSequence>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/ASP_Fire_Rifle_Hip.ASP_Fire_Rifle_Hip"));
+    AimFireClip=LoadObject<UAnimSequence>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/ASP_Fire_Rifle_Ironsights.ASP_Fire_Rifle_Ironsights"));
     ReloadClip=LoadObject<UAnimSequence>(nullptr,TEXT("/Game/ThirdParty/Quantum/Animations/Combat/ASP_Reload_Rifle_Hip.ASP_Reload_Rifle_Hip"));
     LastShot=-100.f; ReloadWasActive=false; ReloadMontage=nullptr;
 }
@@ -40,6 +41,7 @@ void UDuelAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
     if (Shot>LastShot)
     {
         LastShot=Shot;
-        if (!ReloadActive && FireClip) PlaySlotAnimationAsDynamicMontage(FireClip,TEXT("DefaultSlot"),.03f,.08f);
+        UAnimSequence* SelectedFire=Character->IsAiming() && AimFireClip ? AimFireClip : FireClip;
+        if (!ReloadActive && SelectedFire) PlaySlotAnimationAsDynamicMontage(SelectedFire,TEXT("DefaultSlot"),.03f,.08f);
     }
 }

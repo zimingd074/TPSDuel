@@ -19,6 +19,7 @@ public:
     const FDuelWeaponPose& GetWeaponPoseSnapshot() const { return WeaponPoseSnapshot; }
 private:
     UPROPERTY(Transient) class UAnimSequence* FireClip=nullptr;
+    UPROPERTY(Transient) class UAnimSequence* AimFireClip=nullptr;
     UPROPERTY(Transient) class UAnimSequence* ReloadClip=nullptr;
     UPROPERTY(Transient) class UAnimMontage* ReloadMontage=nullptr;
     float LastShot=-100.f;

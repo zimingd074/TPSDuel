@@ -20,6 +20,7 @@
 #include "DuelWeaponPose.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "UObject/UnrealType.h"
 #include "DuelAnimInstance.h"
 #include "Misc/App.h"
@@ -183,6 +184,7 @@ void ADuelPlayerController::TickSmokeTest()
     FString TestRole;
     if (!FParse::Value(FCommandLine::Get(), TEXT("DuelSmoke="), TestRole) || (TestRole != TEXT("Host") && TestRole != TEXT("Client"))) return;
     const bool CheckFacing=FParse::Param(FCommandLine::Get(),TEXT("DuelSmokeFacing"));
+    const bool CheckAim=FParse::Param(FCommandLine::Get(),TEXT("DuelSmokeAim"));
     const double StanceLength=CheckFacing ? 5.4 : 3.0;
     const double Now = FPlatformTime::Seconds();
     if (SmokeStart == 0) SmokeStart = Now;
@@ -216,6 +218,19 @@ void ADuelPlayerController::TickSmokeTest()
             if (!GI->ConnectionStatus.IsEmpty()) Report(false, GI->ConnectionStatus);
         return;
     }
+    if (CheckAim)
+        for (TActorIterator<ADuelCharacter> It(GetWorld()); It; ++It)
+        {
+            auto* Mesh=It->GetMesh();
+            Mesh->VisibilityBasedAnimTickOption=EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+            const auto* Montage=Mesh->GetAnimInstance() ? Mesh->GetAnimInstance()->GetCurrentActiveMontage() : nullptr;
+            const auto* Clip=Montage && Montage->SlotAnimTracks.Num() && Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.Num() ? Montage->SlotAnimTracks[0].AnimTrack.AnimSegments[0].AnimReference : nullptr;
+            if (!It->IsLocallyControlled() && It->IsAiming() && Clip && Clip->GetName().Contains(TEXT("Fire_Rifle_Ironsights")) && !SmokeAimSeen)
+            {
+                SmokeAimSeen=true;
+                UE_LOG(LogTPSDuel,Display,TEXT("ADS_SYNC role=%s remoteIronsights=1 clip=%s"),*TestRole,*Clip->GetName());
+            }
+        }
     for (TActorIterator<ADuelCharacter> It(GetWorld()); It; ++It)
         if (It->IsReloading())
         {
@@ -235,8 +250,8 @@ void ADuelPlayerController::TickSmokeTest()
     {
         FireReleased();
         if (Now - SmokeFinishSeen >= 1)
-            Report(State->Phase == EDuelPhase::Finished && State->WinnerSlot == 0 && Blue == 3 && Red == 1 && SmokeReloadSeen && SmokeQuietSeen && SmokeCrouchSeen && (!CheckFacing || (SmokeForwardFacingSeen && SmokeBackwardFacingSeen)),
-                FString::Printf(TEXT("BLUE=%d RED=%d WINNER=%d reload=%d quiet=%d crouch=%d diagonal=%d backward=%d"), Blue, Red, State->WinnerSlot,SmokeReloadSeen,SmokeQuietSeen,SmokeCrouchSeen,SmokeForwardFacingSeen,SmokeBackwardFacingSeen));
+            Report(State->Phase == EDuelPhase::Finished && State->WinnerSlot == 0 && Blue == 3 && Red == 1 && SmokeReloadSeen && SmokeQuietSeen && SmokeCrouchSeen && (!CheckFacing || (SmokeForwardFacingSeen && SmokeBackwardFacingSeen)) && (!CheckAim || SmokeAimSeen),
+                FString::Printf(TEXT("BLUE=%d RED=%d WINNER=%d reload=%d quiet=%d crouch=%d diagonal=%d backward=%d ads=%d"), Blue, Red, State->WinnerSlot,SmokeReloadSeen,SmokeQuietSeen,SmokeCrouchSeen,SmokeForwardFacingSeen,SmokeBackwardFacingSeen,SmokeAimSeen));
         return;
     }
     if (State->Phase != EDuelPhase::Playing) return;
@@ -298,6 +313,7 @@ void ADuelPlayerController::TickSmokeTest()
         return;
     }
     static double LastDiagnostic = 0;
+    if (Self && CheckAim && !Self->IsAiming()) Self->SetAiming(true);
     const bool LogDiagnostic = Now - LastDiagnostic > 5;
     if (LogDiagnostic)
     {

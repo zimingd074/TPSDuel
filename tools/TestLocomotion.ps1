@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskRuntime=Join-Path $taskRoot 'Builds\Windows\WindowsNoEditor\TPSDuel'
 $taskExe=Join-Path $taskRuntime 'Binaries\Win64\TPSDuel.exe'
-$taskLog=Join-Path $taskRoot 'Saved\locomotion-v055.log'
+$taskLog=Join-Path $taskRoot 'Saved\locomotion-v056.log'
 $taskResult=Join-Path $taskRuntime 'Saved\MotionTest.txt'
 if(-not(Test-Path -LiteralPath $taskExe)){throw 'Package Windows first.'}
 if(Test-Path -LiteralPath $taskResult){Remove-Item -LiteralPath $taskResult}
@@ -70,7 +70,7 @@ try {
         if([Math]::Abs($taskViewYaw) -gt 1){throw 'Movement turned the camera.'}
     }
     if(-not $NullRHI){
-        $taskOutput=Join-Path $taskRoot 'docs\screenshots\locomotion-v0.5.5'
+        $taskOutput=Join-Path $taskRoot 'docs\screenshots\locomotion-v0.5.6'
         New-Item -ItemType Directory -Path $taskOutput -Force | Out-Null
         # Windows image previews may map existing PNGs and prevent truncation.
         # Preserve the previous capture, then publish a fresh file at its path.

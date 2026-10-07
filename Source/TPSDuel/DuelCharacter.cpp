@@ -244,7 +244,10 @@ void ADuelCharacter::Tick(float DeltaSeconds)
     if (bQuantumCharacter)
     {
         const float Reload=GetReloadProgress(), Kick=GetVisualRecoil();
-        const auto FreePose=FDuelWeaponPose::Calculate(Pitch,VisualAimAlpha,Reload,Kick,VisualCarryAlpha);
+        // The ironsights fire clip starts on the first shot. Use its safe grip
+        // immediately, even if right-click and fire arrive in the same frame.
+        const float PoseAim=bAiming && IsFiring() ? 1.f : VisualAimAlpha;
+        const auto FreePose=FDuelWeaponPose::Calculate(Pitch,PoseAim,Reload,Kick,VisualCarryAlpha);
         const FVector Shoulder=(GetMesh()->GetBoneLocation(TEXT("upperarm_r"),EBoneSpaces::ComponentSpace)
             +GetMesh()->GetBoneLocation(TEXT("upperarm_l"),EBoneSpaces::ComponentSpace))*.5f;
         const FVector Offset=Shoulder-FVector(0,0,148);
@@ -257,7 +260,7 @@ void ADuelCharacter::Tick(float DeltaSeconds)
         const float Target=Blocked ? FMath::Clamp(.4f+1.f-Contact.Time,0.f,1.f) : 0.f;
         // React immediately when approaching cover, ease back after leaving it.
         VisualObstructionAlpha=Target>VisualObstructionAlpha ? Target : FMath::FInterpTo(VisualObstructionAlpha,Target,DeltaSeconds,8.f);
-        DesiredWeaponPose=FDuelWeaponPose::Calculate(Pitch,VisualAimAlpha,Reload,Kick,VisualCarryAlpha,VisualObstructionAlpha);
+        DesiredWeaponPose=FDuelWeaponPose::Calculate(Pitch,PoseAim,Reload,Kick,VisualCarryAlpha,VisualObstructionAlpha);
         Magazine->SetVisibility(IsAlive() && Magazine->GetStaticMesh()!=nullptr);
     }
     else
@@ -468,7 +471,7 @@ void ADuelCharacter::FireOnce()
     }
     MulticastShot(Muzzle, End);
 #if !UE_BUILD_SHIPPING
-    if (FParse::Param(FCommandLine::Get(), TEXT("DuelShotLog")) && Ammo % 10 == 0)
+    if (FParse::Param(FCommandLine::Get(), TEXT("DuelShotLog")) && (Ammo % 10 == 0 || MuzzleBlocked))
         UE_LOG(LogTPSDuel, Display, TEXT("SHOT ammo=%d camera=%s aim=%s muzzleBlocked=%d hit=%s end=%s"), Ammo, *CameraOrigin.ToString(), *ServerAimRotation.ToString(), MuzzleBlocked, *GetNameSafe(Hit.GetActor()), *End.ToString());
 #endif
     ForceNetUpdate();
